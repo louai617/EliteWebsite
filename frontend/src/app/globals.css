@@ -1,0 +1,47 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: #ffffff;
+  --foreground: #1a1a1a;
+  --primary: #b98f42;
+  --secondary: #1a1a1a;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+/* Respect users who ask the OS to reduce motion. */
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+}
+
+body {
+  color: var(--foreground);
+  background: var(--background);
+}
+
+/* RTL Support */
+[dir="rtl"] {
+  font-family: var(--font-cairo), sans-serif;
+}
+
+[dir="ltr"] {
+  font-family: var(--font-work-sans), sans-serif;
+}
+
+.font-gold {
+  color: #b98f42;
+}
+
+.bg-gold {
+  background-color: #b98f42;
+}
+
+.border-gold {
+  border-color: #b98f42;
+}
