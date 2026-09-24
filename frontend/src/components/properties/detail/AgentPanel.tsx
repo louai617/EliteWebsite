@@ -5,6 +5,8 @@ import Image from 'next/image';
 import { useTranslations, useLocale } from 'next-intl';
 import { Phone, MessageSquare, Mail, Clock, BadgeCheck, Heart, Share2, Check } from 'lucide-react';
 import type { Agent } from '@/data/properties';
+import api from '@/lib/api';
+import { useAuthStore } from '@/store/authStore';
 
 interface AgentPanelProps {
   agent: Agent;
@@ -22,22 +24,44 @@ export default function AgentPanel({ agent, propertyId, shareTitle }: AgentPanel
 
   const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
+  const user = useAuthStore((s) => s.user);
+  const authStatus = useAuthStore((s) => s.status);
 
   const name = isRtl ? agent.full_name_ar : agent.full_name_en;
   const title = isRtl ? agent.title_ar : agent.title_en;
   const agency = isRtl ? agent.agency_name_ar : agent.agency_name_en;
 
-  // Saved state lives client-side only; read it after mount to keep SSR output stable.
+  // Signed-in users keep saved listings on their account (MongoDB); visitors use
+  // localStorage. Read after mount to keep SSR output stable.
   useEffect(() => {
+    if (authStatus !== 'ready') return;
+    if (user) {
+      let cancelled = false;
+      api
+        .get<{ data: { ids: string[] } }>('/account/saved-properties')
+        .then(({ data }) => !cancelled && setSaved(data.data.ids.includes(propertyId)))
+        .catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }
     try {
       const list: string[] = JSON.parse(localStorage.getItem(SAVED_KEY) || '[]');
       setSaved(list.includes(propertyId));
     } catch {
       // Corrupt or unavailable storage just means "not saved".
     }
-  }, [propertyId]);
+  }, [propertyId, user, authStatus]);
 
   const toggleSaved = () => {
+    if (user) {
+      const next = !saved;
+      setSaved(next);
+      api
+        .request({ method: next ? 'POST' : 'DELETE', url: '/account/saved-properties', data: { propertyId } })
+        .catch(() => setSaved(!next));
+      return;
+    }
     try {
       const list: string[] = JSON.parse(localStorage.getItem(SAVED_KEY) || '[]');
       const next = list.includes(propertyId)
@@ -121,6 +145,7 @@ export default function AgentPanel({ agent, propertyId, shareTitle }: AgentPanel
           <MessageSquare className="h-4 w-4" aria-hidden="true" />
           {t('whatsapp')}
         </a>
+        {agent.email && (
         <a
           href={`mailto:${agent.email}?subject=${encodeURIComponent(shareTitle)}`}
           className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 py-3.5 font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
@@ -128,6 +153,7 @@ export default function AgentPanel({ agent, propertyId, shareTitle }: AgentPanel
           <Mail className="h-4 w-4" aria-hidden="true" />
           {t('email_agent')}
         </a>
+        )}
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2.5">

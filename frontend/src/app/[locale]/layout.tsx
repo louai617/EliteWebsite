@@ -9,6 +9,7 @@ import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import ChatbotWidget from '@/components/chatbot/ChatbotWidget';
 import { AuthProvider } from '@/lib/AuthContext';
+import HideOnDashboard from '@/components/layout/HideOnDashboard';
 
 const workSans = Work_Sans({ 
   subsets: ["latin"],
@@ -81,12 +82,16 @@ export default async function RootLayout({
         <NextIntlClientProvider messages={messages} locale={locale}>
           <AuthProvider>
             <div className="flex flex-col min-h-screen">
-              <Navbar />
+              <HideOnDashboard>
+                <Navbar />
+              </HideOnDashboard>
               <div className="flex-grow">
                 {children}
               </div>
-              <Footer />
-              <ChatbotWidget />
+              <HideOnDashboard>
+                <Footer />
+                <ChatbotWidget />
+              </HideOnDashboard>
             </div>
           </AuthProvider>
         </NextIntlClientProvider>

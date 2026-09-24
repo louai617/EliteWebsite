@@ -10,6 +10,8 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Mail, Lock, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
+import { postLoginPath } from '@/store/authStore';
+import { apiErrorMessage } from '@/lib/api';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -38,11 +40,12 @@ export default function LoginPage() {
     setIsLoading(true);
     setError(null);
     try {
-      await login(data);
-      // Redirect based on role or to home
-      router.push(`/${locale}`);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Invalid email or password. Please try again.');
+      const user = await login(data);
+      // Staff → dashboard, customers → their account, or back to the page that sent them here.
+      const next = new URLSearchParams(window.location.search).get('next');
+      router.push(postLoginPath(user, locale, next));
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Invalid email or password. Please try again.'));
     } finally {
       setIsLoading(false);
     }

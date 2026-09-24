@@ -1,9 +1,13 @@
 /**
- * Shared property dataset.
+ * Public property shape + the original launch listings.
  *
- * Phase 1 runs without the API, so this is the single source of truth for both
- * the listing grid and the detail page. Field names mirror the Mongo schema the
- * backend used, so swapping this for a real fetch later is a drop-in change.
+ * Listings now live in MongoDB (`properties` collection). The public pages read
+ * them through `src/lib/server/services/publicProperties.ts`, which maps each
+ * document onto the `Property` interface below — so the listing card and detail
+ * components are unchanged.
+ *
+ * The `properties` array is kept only as seed data: `npm run seed` imports it
+ * into the database. Nothing at runtime reads it.
  *
  * Free-text lives in both languages; fixed vocabulary (amenities, place types)
  * uses translation keys so it stays translatable.
@@ -70,8 +74,11 @@ export interface Property {
   description_en: string;
   description_ar: string;
 
-  /** i18n key under `property.type` */
-  type: 'apartment' | 'villa' | 'penthouse' | 'townhouse';
+  /** Property type key from CRM settings (i18n key `property.type_<key>` when translated). */
+  type: string;
+  /** Settings labels, used when the type has no translation key. */
+  type_label_en?: string;
+  type_label_ar?: string;
   purpose: Purpose;
 
   price: number;
@@ -127,7 +134,8 @@ export interface Property {
 
   agent: Agent;
 
-  market: {
+  /** Optional — only listings with researched market data show the trends section. */
+  market?: {
     /** Average sale/rent price for comparable units in this community */
     avg_price: number;
     /** Average size in m² for comparable units */
@@ -601,31 +609,12 @@ export const properties: Property[] = [
   },
 ];
 
-export function getPropertyById(id: string): Property | undefined {
-  return properties.find((p) => p._id === id);
-}
-
-/** Same purpose, different listing — used for the "similar properties" rail. */
-export function getSimilarProperties(id: string, limit = 3): Property[] {
-  const current = getPropertyById(id);
-  if (!current) return [];
-  return properties
-    .filter((p) => p._id !== id)
-    .sort((a, b) => {
-      // Prefer same purpose, then closest price.
-      const purposeDelta =
-        Number(b.purpose === current.purpose) - Number(a.purpose === current.purpose);
-      if (purposeDelta !== 0) return purposeDelta;
-      return Math.abs(a.price - current.price) - Math.abs(b.price - current.price);
-    })
-    .slice(0, limit);
-}
-
 /**
  * Price per m². Rentals are annualised first — dividing a monthly rent by floor
  * area yields a number that can't be compared to anything.
  */
 export function pricePerSqm(property: Property): number {
+  if (!property.area_sqm) return 0;
   const annual =
     property.price_frequency === 'month' ? property.price * 12 : property.price;
   return Math.round(annual / property.area_sqm);
@@ -633,11 +622,13 @@ export function pricePerSqm(property: Property): number {
 
 /** Percentage difference vs the community average. Positive means above average. */
 export function priceVsMarket(property: Property): number {
+  if (!property.market?.avg_price) return 0;
   return Math.round(((property.price - property.market.avg_price) / property.market.avg_price) * 100);
 }
 
 /** Percentage difference in size vs the community average. */
 export function sizeVsMarket(property: Property): number {
+  if (!property.market?.avg_size_sqm) return 0;
   return Math.round(
     ((property.area_sqm - property.market.avg_size_sqm) / property.market.avg_size_sqm) * 100
   );

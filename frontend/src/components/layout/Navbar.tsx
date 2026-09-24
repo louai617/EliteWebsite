@@ -8,6 +8,7 @@ import { useTranslations, useLocale } from 'next-intl';
 import { Menu, X, Globe, Phone, User } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { useAuthStore } from '@/store/authStore';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -20,6 +21,13 @@ const Navbar = () => {
   const router = useRouter();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const user = useAuthStore((s) => s.user);
+  const isStaff = useAuthStore((s) => s.isStaff);
+
+  // Signed-in users get a link to their area instead of "Login".
+  const accountLink = user
+    ? { href: isStaff() ? `/${locale}/dashboard` : `/${locale}/account`, label: isStaff() ? 'Dashboard' : 'My Account' }
+    : { href: `/${locale}/login`, label: t('login') };
 
   const isHomePage = pathname === `/${locale}` || pathname === `/${locale}/`;
   const shouldShowSolidNav = isScrolled || !isHomePage;
@@ -98,14 +106,14 @@ const Navbar = () => {
               {locale === 'en' ? 'عربي' : 'EN'}
             </button>
             <Link 
-              href={`/${locale}/login`}
+              href={accountLink.href}
               className={cn(
                 "flex items-center gap-2 font-bold transition-colors hover:text-[#b98f42]",
                 shouldShowSolidNav ? "text-gray-900" : "text-white"
               )}
             >
               <User className="w-5 h-5" />
-              {t('login')}
+              {accountLink.label}
             </Link>
             <Link 
               href={`/${locale}/contact`}
@@ -152,12 +160,12 @@ const Navbar = () => {
               </Link>
             ))}
             <Link 
-              href={`/${locale}/login`}
+              href={accountLink.href}
               onClick={() => setIsMobileMenuOpen(false)}
               className="text-lg font-bold text-gray-900 py-2 border-b border-gray-100 flex items-center gap-2"
             >
               <User className="w-5 h-5" />
-              {t('login')}
+              {accountLink.label}
             </Link>
             <Link 
               href={`/${locale}/contact`}

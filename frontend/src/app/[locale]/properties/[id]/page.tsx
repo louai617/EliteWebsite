@@ -1,6 +1,7 @@
-import React from 'react';
+import React, { cache } from 'react';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { connection } from 'next/server';
 import { getTranslations, setRequestLocale } from 'next-intl/server';
 import {
   MapPin, Bed, Bath, Maximize, Car, Building2, CalendarDays, Key, ShieldCheck,
@@ -9,10 +10,15 @@ import {
 } from 'lucide-react';
 
 import {
-  properties, getPropertyById, getSimilarProperties,
   pricePerSqm, priceVsMarket, sizeVsMarket,
   type Property, type NearbyPlace,
 } from '@/data/properties';
+import {
+  getPublicProperty,
+  getSimilarPublicProperties,
+} from '@/lib/server/services/publicProperties';
+import PropertyViewTracker from '@/components/properties/detail/PropertyViewTracker';
+import { humanize } from '@/lib/shared/constants';
 
 import PropertyGallery from '@/components/properties/detail/PropertyGallery';
 import PropertyNav from '@/components/properties/detail/PropertyNav';
@@ -28,20 +34,23 @@ import PropertyCard from '@/components/properties/PropertyCard';
 
 type PageParams = { locale: string; id: string };
 
-export function generateStaticParams() {
-  return properties.map((property) => ({ id: property._id }));
-}
-
 /**
- * The listing set is a known, finite list, so anything outside it is a genuine
- * 404. Without this, an unknown id streams a 200 response before `notFound()`
- * can influence the status code.
+ * One database read per request, shared by generateMetadata and the page.
+ *
+ * Rendered per request so CRM edits show immediately. Because the locale-level
+ * `loading.tsx` streams the shell first, an unknown id serves the not-found UI
+ * with a 200 status plus `<meta name="robots" content="noindex">` — Next.js's
+ * documented behaviour for streamed 404s. (Caching these pages instead would
+ * let arbitrary ids fill the cache.)
  */
-export const dynamicParams = false;
+const getProperty = cache(async (id: string) => {
+  await connection();
+  return getPublicProperty(id);
+});
 
 export async function generateMetadata({ params }: { params: Promise<PageParams> }) {
   const { locale, id } = await params;
-  const property = getPropertyById(id);
+  const property = await getProperty(id);
   if (!property) return { title: 'Property not found' };
 
   const isRtl = locale === 'ar';
@@ -112,15 +121,15 @@ function DetailRow({
 /**
  * Property detail page.
  *
- * Rendered on the server from the shared dataset so it prerenders per locale;
- * only the gallery, charts, calculator and contact controls ship as client
- * components.
+ * Rendered on the server from MongoDB on each request (only published
+ * listings); only the gallery, charts, calculator and contact controls ship as
+ * client components.
  */
 export default async function PropertyDetailPage({ params }: { params: Promise<PageParams> }) {
   const { locale, id } = await params;
   setRequestLocale(locale);
 
-  const property = getPropertyById(id);
+  const property = await getProperty(id);
   if (!property) notFound();
 
   const t = await getTranslations({ locale, namespace: 'property' });
@@ -147,7 +156,13 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
 
   const priceDelta = priceVsMarket(property);
   const sizeDelta = sizeVsMarket(property);
-  const similar = getSimilarProperties(property._id);
+  const similar = await getSimilarPublicProperties(property);
+  const market = property.market;
+
+  // Types added in Settings may have no translation key yet — fall back to their label.
+  const typeLabel = t.has(`type_${property.type}`)
+    ? t(`type_${property.type}`)
+    : (isRtl ? property.type_label_ar : property.type_label_en) ?? humanize(property.type);
 
   const mapsHref = `https://www.google.com/maps/search/?api=1&query=${property.location.lat},${property.location.lng}`;
 
@@ -159,10 +174,10 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
     { id: 'overview', labelKey: 'nav_overview' },
     { id: 'details', labelKey: 'nav_details' },
     { id: 'amenities', labelKey: 'nav_amenities' },
-    { id: 'trends', labelKey: 'nav_trends' },
+    ...(market ? [{ id: 'trends', labelKey: 'nav_trends' }] : []),
     { id: 'location', labelKey: 'nav_location' },
     ...(showPayment ? [{ id: 'payment', labelKey: 'nav_payment' }] : []),
-    { id: 'similar', labelKey: 'nav_similar' },
+    ...(similar.length > 0 ? [{ id: 'similar', labelKey: 'nav_similar' }] : []),
   ];
 
   // Structured data so listings surface correctly in search results.
@@ -293,7 +308,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
             {
               icon: Building2,
               label: t('property_type'),
-              value: t(`type_${property.type}`),
+              value: typeLabel,
             },
           ].map((fact) => (
             <div key={fact.label} className="flex items-center gap-3 bg-white px-4 py-4">
@@ -329,7 +344,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
 
             <Section id="details" title={t('property_details')}>
               <dl className="grid gap-x-10 sm:grid-cols-2">
-                <DetailRow icon={Building2} label={t('property_type')} value={t(`type_${property.type}`)} />
+                <DetailRow icon={Building2} label={t('property_type')} value={typeLabel} />
                 <DetailRow icon={Layers} label={t('furnishing')} value={t(`furnishing_${property.furnishing}`)} />
                 <DetailRow
                   icon={Maximize}
@@ -391,11 +406,12 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
               <AmenitiesGrid amenities={property.amenities} />
             </Section>
 
+            {market && (
             <Section id="trends" title={t('trends_title')}>
               <p className="-mt-2 mb-6 text-sm text-gray-500">
                 {t('trends_subtitle', {
                   beds: property.bedrooms,
-                  type: t(`type_${property.type}`).toLowerCase(),
+                  type: typeLabel.toLowerCase(),
                   community,
                   city,
                 })}
@@ -403,7 +419,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
 
               <div className="rounded-2xl border border-gray-100 p-5 md:p-6">
                 <PriceTrendsChart
-                  history={property.market.price_history}
+                  history={market.price_history}
                   communityLabel={community}
                   cityLabel={t('trends_city', { city })}
                   axisLabel={perSqmUnit}
@@ -423,7 +439,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                         : t('costs_same')
                   }
                   value={property.price}
-                  average={property.market.avg_price}
+                  average={market.avg_price}
                   delta={priceDelta}
                   unit={property.currency}
                   thisLabel={t('this_property')}
@@ -438,7 +454,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                         : t('is_same_size')
                   }
                   value={property.area_sqm}
-                  average={property.market.avg_size_sqm}
+                  average={market.avg_size_sqm}
                   delta={sizeDelta}
                   unit={tCommon('sqm')}
                   thisLabel={t('this_property')}
@@ -446,6 +462,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                 />
               </div>
             </Section>
+            )}
 
             <Section id="location" title={t('location_title')}>
               <p className="-mt-2 mb-5 flex items-center gap-1.5 text-sm text-gray-500">
@@ -483,7 +500,9 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                 </div>
               </div>
 
+              {property.nearby.length > 0 && (
               <h3 className="mb-4 text-base font-bold text-secondary">{t('nearby_title')}</h3>
+              )}
               <ul className="grid gap-3 sm:grid-cols-2">
                 {property.nearby.map((place) => {
                   const Icon = PLACE_ICONS[place.category];
@@ -512,6 +531,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
               </ul>
 
               {/* Community snapshot */}
+              {market && (
               <div className="mt-8 rounded-2xl bg-gray-50 p-6">
                 <h3 className="mb-4 text-base font-bold text-secondary">
                   {t('community_title', { community })}
@@ -520,23 +540,24 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                   <div>
                     <dt className="text-xs text-gray-500">{t('community_buildings')}</dt>
                     <dd className="mt-1 text-xl font-bold text-secondary">
-                      {property.market.community_buildings}
+                      {market.community_buildings}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-xs text-gray-500">{t('community_listings')}</dt>
                     <dd className="mt-1 text-xl font-bold text-secondary">
-                      {property.market.community_listings.toLocaleString()}
+                      {market.community_listings.toLocaleString()}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-xs text-gray-500">{t('community_avg_price')}</dt>
                     <dd className="mt-1 text-xl font-bold text-secondary">
-                      {(property.market.avg_price / 1_000_000).toFixed(1)}M
+                      {(market.avg_price / 1_000_000).toFixed(1)}M
                     </dd>
                   </div>
                 </dl>
               </div>
+              )}
             </Section>
 
             {/* The calculator carries its own heading, so only the plan needs one. */}
@@ -570,6 +591,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
             </Section>
             )}
 
+            {similar.length > 0 && (
             <Section id="similar" title={tCommon('similar_properties')}>
               <div className="grid gap-6 sm:grid-cols-2">
                 {similar.map((item: Property) => (
@@ -577,6 +599,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                 ))}
               </div>
             </Section>
+            )}
 
             {/* Regulatory footer */}
             <div className="rounded-2xl bg-gray-50 p-6">
@@ -620,6 +643,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
         </div>
       </div>
 
+      <PropertyViewTracker propertyId={property._id} />
       <StickyContactBar
         phone={property.agent.phone}
         whatsapp={property.agent.whatsapp}
