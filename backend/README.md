@@ -17,6 +17,10 @@ npx prisma db seed          # realistic Doha demo data (wipes CRM tables first)
 npm run dev                 # http://localhost:3000
 ```
 
+`DATABASE_URL` defaults to `file:./dev.db`, so `npm install` and the Prisma commands also work
+before `.env` exists. `SESSION_SECRET` has a development-only fallback; production refuses to
+start without it.
+
 Production: `npm run build && npm start` (apply migrations with `npm run db:deploy`).
 
 ### Development accounts (created by the seed)

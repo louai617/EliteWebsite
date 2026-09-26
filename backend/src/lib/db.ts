@@ -7,8 +7,8 @@ import { PrismaClient } from "@/generated/prisma/client";
  * change, so the instance is cached on globalThis to avoid exhausting file handles.
  */
 function createClient() {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is not set. Copy .env.example to .env.");
+  // Same default as prisma.config.ts and the seed: the SQLite file next to package.json.
+  const url = process.env.DATABASE_URL ?? "file:./dev.db";
   const adapter = new PrismaBetterSqlite3({ url });
   return new PrismaClient({
     adapter,
