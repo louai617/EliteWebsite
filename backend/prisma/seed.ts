@@ -9,6 +9,7 @@ import "dotenv/config";
 
 // Seed times (viewings at 10:00, tasks due at 15:00…) are Doha wall-clock times.
 process.env.TZ = "Asia/Qatar";
+import { execSync } from "node:child_process";
 import bcrypt from "bcryptjs";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import {
@@ -156,8 +157,34 @@ async function wipe() {
   await db.counter.deleteMany();
 }
 
+/** A fresh clone has no tables until migrations run — apply them instead of failing. */
+async function ensureSchema() {
+  const tables = await db.$queryRaw<{ name: string }[]>`
+    SELECT name FROM sqlite_master WHERE type = 'table' AND name = 'Activity'`;
+  if (tables.length > 0) return;
+  console.log("Database has no tables yet — applying migrations (prisma migrate deploy)…");
+  await db.$disconnect();
+  execSync("npx prisma migrate deploy", { stdio: "inherit" });
+}
+
+/** Turns the usual setup mistakes into one actionable line instead of a stack trace. */
+function explain(error: unknown) {
+  const message = error instanceof Error ? error.message : String(error);
+  if (/does not exist in the current database|no such table/i.test(message)) {
+    return "The database tables are missing or out of date. Run: npx prisma migrate dev";
+  }
+  if (/NODE_MODULE_VERSION|bindings file|better_sqlite3\.node|was compiled against a different Node/i.test(message)) {
+    return "better-sqlite3 was built for a different Node.js version. Run: npm rebuild better-sqlite3";
+  }
+  if (/SQLITE_CANTOPEN|unable to open database/i.test(message)) {
+    return `Cannot open the SQLite file (DATABASE_URL=${process.env.DATABASE_URL ?? "file:./dev.db"}). Check the path and folder permissions.`;
+  }
+  return null;
+}
+
 async function main() {
   console.log("Seeding ELITE CRM…");
+  await ensureSchema();
   await wipe();
 
   const settings = await db.settings.create({
@@ -627,6 +654,8 @@ async function main() {
 main()
   .catch((error) => {
     console.error(error);
+    const hint = explain(error);
+    if (hint) console.error(`\n✖ Seed failed: ${hint}\n`);
     process.exitCode = 1;
   })
   .finally(() => db.$disconnect());
