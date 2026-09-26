@@ -9,7 +9,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Mail, ArrowRight, ArrowLeft, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
-import api, { apiErrorMessage } from '@/lib/api';
+import api from '@/lib/api';
 
 const forgotSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -37,8 +37,8 @@ export default function ForgotPasswordPage() {
     try {
       await api.post('/auth/forgot-password', data);
       setIsSent(true);
-    } catch (err) {
-      setError(apiErrorMessage(err));
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Something went wrong. Please try again.');
     } finally {
       setIsLoading(false);
     }

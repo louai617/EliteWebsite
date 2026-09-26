@@ -10,16 +10,12 @@ import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Mail, Lock, User, Phone, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
-import { apiErrorMessage } from '@/lib/api';
 
 const registerSchema = z.object({
   full_name: z.string().min(3, 'Full name is required'),
   email: z.string().email('Please enter a valid email address'),
   phone: z.string().min(8, 'Phone number is required'),
-  password: z
-    .string()
-    .min(8, 'Password must be at least 8 characters')
-    .refine((v) => /[A-Za-z]/.test(v) && /\d/.test(v), 'Use letters and at least one number'),
+  password: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
@@ -45,9 +41,9 @@ export default function RegisterPage() {
     setError(null);
     try {
       await signup(data);
-      router.push(`/${locale}/account`);
-    } catch (err) {
-      setError(apiErrorMessage(err));
+      router.push(`/${locale}`);
+    } catch (err: any) {
+      setError(err.response?.data?.message || 'Something went wrong. Please try again.');
     } finally {
       setIsLoading(false);
     }

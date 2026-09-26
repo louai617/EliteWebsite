@@ -3,25 +3,12 @@ import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import Image from 'next/image';
 import PropertyCard from '@/components/properties/PropertyCard';
-import { connection } from 'next/server';
-import type { Property } from '@/data/properties';
-import { listPublicProperties } from '@/lib/server/services/publicProperties';
+import { properties } from '@/data/properties';
 
-async function loadFeatured(): Promise<Property[]> {
-  // Outside the try: this opts the page into per-request rendering and must not be caught.
-  await connection();
-  try {
-    return (await listPublicProperties({ featured: true, limit: 6 })).items;
-  } catch (error) {
-    // The homepage must still render if the database is briefly unreachable.
-    console.error('[home] Could not load featured properties:', error);
-    return [];
-  }
-}
+const featuredProperties = properties.filter((property) => property.is_featured);
 
 export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
-  const featuredProperties = await loadFeatured();
   const t = await getTranslations({ locale, namespace: 'hero' });
   const tCommon = await getTranslations({ locale, namespace: 'common' });
 

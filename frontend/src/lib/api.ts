@@ -1,55 +1,45 @@
-import axios, { AxiosError } from 'axios';
+import axios from 'axios';
 
-/**
- * Browser → CRM API client.
- *
- * The API lives in this same Next.js app (`/api/*`). Authentication is an
- * httpOnly session cookie set by the server, so no token is ever stored in
- * localStorage or readable by JavaScript.
- */
 const api = axios.create({
-  baseURL: '/api',
-  withCredentials: true,
-  headers: { 'Content-Type': 'application/json' },
+  baseURL: process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api',
+  withCredentials: true, // Required for HTTP-only cookies
 });
 
-type UnauthorizedListener = () => void;
-const unauthorizedListeners = new Set<UnauthorizedListener>();
+// Interceptor to add access token to headers
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem('accessToken');
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
 
-/** Notified when any request comes back 401 (session expired or revoked). */
-export function onUnauthorized(listener: UnauthorizedListener) {
-  unauthorizedListeners.add(listener);
-  return () => unauthorizedListeners.delete(listener);
-}
-
+// Interceptor to handle token refresh on 401 errors
 api.interceptors.response.use(
   (response) => response,
-  (error: AxiosError) => {
-    const url = error.config?.url ?? '';
-    if (error.response?.status === 401 && !url.startsWith('/auth/')) {
-      unauthorizedListeners.forEach((listener) => listener());
+  async (error) => {
+    const originalRequest = error.config;
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+      try {
+        const { data } = await axios.post(
+          `${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000/api'}/auth/refresh`,
+          {},
+          { withCredentials: true }
+        );
+        localStorage.setItem('accessToken', data.accessToken);
+        api.defaults.headers.common['Authorization'] = `Bearer ${data.accessToken}`;
+        originalRequest.headers['Authorization'] = `Bearer ${data.accessToken}`;
+        return api(originalRequest);
+      } catch (refreshError) {
+        // Redirect to login or clear state if refresh fails
+        localStorage.removeItem('accessToken');
+        localStorage.removeItem('user');
+        return Promise.reject(refreshError);
+      }
     }
     return Promise.reject(error);
   }
 );
-
-/** Human-readable message from an API error (falls back to a generic one). */
-export function apiErrorMessage(error: unknown, fallback = 'Something went wrong. Please try again.'): string {
-  if (axios.isAxiosError(error)) {
-    const data = error.response?.data as { message?: string } | undefined;
-    if (data?.message) return data.message;
-    if (!error.response) return 'Cannot reach the server. Check your connection.';
-  }
-  return fallback;
-}
-
-/** Field-level validation errors from a 400 response, if any. */
-export function apiFieldErrors(error: unknown): Record<string, string[]> {
-  if (axios.isAxiosError(error)) {
-    const details = (error.response?.data as { error?: { details?: unknown } } | undefined)?.error?.details;
-    if (details && typeof details === 'object') return details as Record<string, string[]>;
-  }
-  return {};
-}
 
 export default api;

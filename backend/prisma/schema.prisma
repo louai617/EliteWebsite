@@ -1,0 +1,628 @@
+// ELITE Real Estate CRM — Prisma schema (SQLite first, PostgreSQL-ready).
+//
+// Conventions
+//  - Every table has a cuid `id`, `createdAt` and (where records change) `updatedAt`.
+//  - Money is stored as whole QAR (Int). Percentages are Float.
+//  - Relations use real foreign keys. `onDelete` is chosen per relation:
+//      Cascade  → child rows are meaningless without the parent (images, notes, sessions)
+//      SetNull  → keep the record, drop the link (assignments, optional context)
+//      Restrict → deleting would destroy business history (owners with properties,
+//                 properties/clients with deals). The service layer turns these into
+//                 friendly messages.
+//  - Enums are native Prisma enums (stored as TEXT in SQLite, real enums in PostgreSQL).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+// ───────────────────────────── Enums ─────────────────────────────
+
+enum Role {
+  ADMIN
+  MANAGER
+  AGENT
+}
+
+enum PropertyType {
+  APARTMENT
+  VILLA
+  TOWNHOUSE
+  PENTHOUSE
+  STUDIO
+  DUPLEX
+  COMPOUND_VILLA
+  OFFICE
+  SHOP
+  WAREHOUSE
+  LAND
+  BUILDING
+}
+
+enum ListingPurpose {
+  RENT
+  SALE
+}
+
+enum PropertyStatus {
+  AVAILABLE
+  RESERVED
+  RENTED
+  SOLD
+  OFF_MARKET
+}
+
+enum Furnishing {
+  FURNISHED
+  SEMI_FURNISHED
+  UNFURNISHED
+}
+
+enum LeadSource {
+  PROPERTY_FINDER
+  INSTAGRAM
+  FACEBOOK
+  TIKTOK
+  WEBSITE
+  WHATSAPP
+  REFERRAL
+  WALK_IN
+  PHONE
+  OTHER
+}
+
+enum LeadStatus {
+  NEW
+  CONTACTED
+  QUALIFIED
+  VIEWING_SCHEDULED
+  NEGOTIATION
+  WON
+  LOST
+}
+
+enum Priority {
+  LOW
+  MEDIUM
+  HIGH
+  URGENT
+}
+
+/// What a lead is looking for / what a client is to the agency.
+enum CustomerType {
+  BUYER
+  TENANT
+  INVESTOR
+  LANDLORD
+  SELLER
+}
+
+enum ViewingStatus {
+  SCHEDULED
+  CONFIRMED
+  COMPLETED
+  CANCELLED
+  NO_SHOW
+}
+
+enum DealType {
+  SALE
+  RENTAL
+}
+
+enum DealStatus {
+  NEGOTIATION
+  CONTRACT_PENDING
+  CONTRACT_SIGNED
+  CLOSED_WON
+  CLOSED_LOST
+}
+
+enum TaskStatus {
+  TODO
+  IN_PROGRESS
+  COMPLETED
+  CANCELLED
+}
+
+enum EntityType {
+  LEAD
+  CLIENT
+  OWNER
+  PROPERTY
+  DEAL
+  VIEWING
+  TASK
+  USER
+}
+
+enum ActivityAction {
+  CREATED
+  UPDATED
+  DELETED
+  STATUS_CHANGED
+  ASSIGNED
+  COMPLETED
+  CANCELLED
+  CLOSED
+  CONVERTED
+  NOTE_ADDED
+  IMAGE_ADDED
+}
+
+// ───────────────────────────── Users & auth ─────────────────────────────
+
+model User {
+  id           String    @id @default(cuid())
+  name         String
+  email        String    @unique
+  passwordHash String
+  phone        String?
+  role         Role      @default(AGENT)
+  avatarUrl    String?
+  isActive     Boolean   @default(true)
+  lastLoginAt  DateTime?
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  sessions        Session[]
+  properties      Property[]  @relation("PropertyAgent")
+  leads           Lead[]      @relation("LeadAgent")
+  clients         Client[]    @relation("ClientAgent")
+  viewings        Viewing[]   @relation("ViewingAgent")
+  deals           Deal[]      @relation("DealAgent")
+  assignedTasks   Task[]      @relation("TaskAssignee")
+  createdTasks    Task[]      @relation("TaskCreator")
+  createdOwners   Owner[]     @relation("OwnerCreator")
+  notes           Note[]
+  activities      Activity[]
+
+  @@index([role, isActive])
+}
+
+/// Server-side sessions. The cookie holds a random token; only its SHA-256 hash is stored,
+/// so a database leak does not leak usable sessions. Rows can be revoked individually.
+model Session {
+  id        String   @id @default(cuid())
+  tokenHash String   @unique
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  expiresAt DateTime
+  userAgent String?
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+// ───────────────────────────── Owners & properties ─────────────────────────────
+
+model Owner {
+  id             String   @id @default(cuid())
+  fullName       String
+  phone          String
+  secondaryPhone String?
+  email          String?
+  nationality    String?
+  /// Standing remarks about the owner. Chronological notes live in `Note`.
+  notes          String?
+  createdById    String?
+  createdBy      User?    @relation("OwnerCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  properties  Property[]
+  deals       Deal[]
+  noteEntries Note[]
+  activities  Activity[]
+
+  @@index([fullName])
+  @@index([phone])
+  @@index([email])
+}
+
+model Property {
+  id        String         @id @default(cuid())
+  /// Human-friendly reference shown in the UI, e.g. ELT-1001.
+  reference String         @unique
+  title     String
+  type      PropertyType
+  purpose   ListingPurpose
+  status    PropertyStatus @default(AVAILABLE)
+  price     Int
+  currency  String         @default("QAR")
+  areaSqm   Float?
+  bedrooms  Int?
+  bathrooms Int?
+  floor     Int?
+  buildingNumber String?
+  tower     String?
+  yearBuilt Int?
+
+  // Location
+  country       String  @default("Qatar")
+  city          String  @default("Doha")
+  area          String
+  street        String?
+  buildingName  String?
+  googleMapsUrl String?
+  latitude      Float?
+  longitude     Float?
+
+  // Details & amenities (booleans so they are filterable and portable)
+  furnishing    Furnishing?
+  description   String?
+  parkingSpaces Int         @default(0)
+  hasBalcony    Boolean     @default(false)
+  hasMaidRoom   Boolean     @default(false)
+  hasPool       Boolean     @default(false)
+  hasGym        Boolean     @default(false)
+  hasSeaView    Boolean     @default(false)
+  hasMarinaView Boolean     @default(false)
+  hasGarden     Boolean     @default(false)
+  hasBbq        Boolean     @default(false)
+  hasSecurity   Boolean     @default(false)
+  hasCentralAc  Boolean     @default(false)
+  hasInternet   Boolean     @default(false)
+  billsIncluded Boolean     @default(false)
+
+  // Marketing
+  propertyFinderUrl String?
+  externalUrl       String?
+  isFeatured        Boolean @default(false)
+  seoTitle          String?
+  seoDescription    String?
+
+  ownerId   String?
+  owner     Owner?   @relation(fields: [ownerId], references: [id], onDelete: Restrict)
+  agentId   String?
+  agent     User?    @relation("PropertyAgent", fields: [agentId], references: [id], onDelete: SetNull)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  images     PropertyImage[]
+  interests  PropertyInterest[]
+  viewings   Viewing[]
+  deals      Deal[]
+  tasks      Task[]
+  notes      Note[]
+  activities Activity[]
+
+  @@index([status])
+  @@index([purpose, status])
+  @@index([type])
+  @@index([area])
+  @@index([price])
+  @@index([bedrooms])
+  @@index([agentId])
+  @@index([ownerId])
+  @@index([createdAt])
+  @@index([title])
+}
+
+model PropertyImage {
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  /// Absolute URL or an app path such as /api/uploads/properties/<id>/<file>.
+  url        String
+  sortOrder  Int      @default(0)
+  isPrimary  Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  @@index([propertyId, sortOrder])
+}
+
+/// A lead's or client's interest in a specific property (many-to-many).
+model PropertyInterest {
+  id         String   @id @default(cuid())
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  leadId     String?
+  lead       Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  clientId   String?
+  client     Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([propertyId, leadId])
+  @@unique([propertyId, clientId])
+  @@index([leadId])
+  @@index([clientId])
+}
+
+// ───────────────────────────── Leads & clients ─────────────────────────────
+
+model Lead {
+  id             String          @id @default(cuid())
+  fullName       String
+  phone          String
+  email          String?
+  nationality    String?
+  source         LeadSource
+  leadType       CustomerType?
+  interestedArea String?
+  purpose        ListingPurpose?
+  budgetMin      Int?
+  budgetMax      Int?
+  bedrooms       Int?
+  furnishing     Furnishing?
+  notes          String?
+  status         LeadStatus      @default(NEW)
+  priority       Priority        @default(MEDIUM)
+  statusChangedAt DateTime       @default(now())
+
+  agentId  String?
+  agent    User?   @relation("LeadAgent", fields: [agentId], references: [id], onDelete: SetNull)
+  /// Set when the lead is converted into (or matched to) a client.
+  clientId String?
+  client   Client? @relation(fields: [clientId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  interests   PropertyInterest[]
+  viewings    Viewing[]
+  deals       Deal[]
+  tasks       Task[]
+  noteEntries Note[]
+  activities  Activity[]
+
+  @@index([status])
+  @@index([source])
+  @@index([priority])
+  @@index([agentId, status])
+  @@index([createdAt])
+  @@index([fullName])
+  @@index([phone])
+  @@index([email])
+  @@index([clientId])
+}
+
+model Client {
+  id           String       @id @default(cuid())
+  fullName     String
+  phone        String
+  email        String?
+  nationality  String?
+  /// QID / passport reference (optional, sensitive — visible to staff only).
+  idReference  String?
+  clientType   CustomerType
+  budgetMin    Int?
+  budgetMax    Int?
+  requirements String?
+  notes        String?
+
+  agentId String?
+  agent   User?   @relation("ClientAgent", fields: [agentId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leads       Lead[]
+  interests   PropertyInterest[]
+  viewings    Viewing[]
+  deals       Deal[]
+  tasks       Task[]
+  noteEntries Note[]
+  activities  Activity[]
+
+  @@index([fullName])
+  @@index([phone])
+  @@index([email])
+  @@index([clientType])
+  @@index([agentId])
+}
+
+// ───────────────────────────── Operations ─────────────────────────────
+
+model Viewing {
+  id         String        @id @default(cuid())
+  propertyId String
+  property   Property      @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  leadId     String?
+  lead       Lead?         @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  clientId   String?
+  client     Client?       @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  agentId    String?
+  agent      User?         @relation("ViewingAgent", fields: [agentId], references: [id], onDelete: SetNull)
+  startsAt   DateTime
+  endsAt     DateTime
+  status     ViewingStatus @default(SCHEDULED)
+  notes      String?
+  createdAt  DateTime      @default(now())
+  updatedAt  DateTime      @updatedAt
+
+  noteEntries Note[]
+  activities  Activity[]
+
+  @@index([startsAt])
+  @@index([agentId, startsAt])
+  @@index([status])
+  @@index([propertyId])
+  @@index([leadId])
+  @@index([clientId])
+}
+
+model Deal {
+  id         String   @id @default(cuid())
+  /// Human-friendly reference, e.g. DL-1001.
+  reference  String   @unique
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Restrict)
+  clientId   String
+  client     Client   @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  /// Snapshot of the property owner at the time of the deal (ownership can change later).
+  ownerId    String?
+  owner      Owner?   @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  agentId    String?
+  agent      User?    @relation("DealAgent", fields: [agentId], references: [id], onDelete: SetNull)
+  leadId     String?
+  lead       Lead?    @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  type              DealType
+  status            DealStatus @default(NEGOTIATION)
+  amount            Int
+  /// Commission figures are computed server-side from `amount`, the percentages and
+  /// the configurable split in `Settings`, then stored so reports stay stable.
+  commissionPercent Float
+  commissionAmount  Int
+  agentSharePercent Float
+  agentCommission   Int
+  companyCommission Int
+  contractDate      DateTime?
+  closingDate       DateTime?
+  closedAt          DateTime?
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+
+  tasks       Task[]
+  noteEntries Note[]
+  activities  Activity[]
+
+  @@index([status])
+  @@index([type])
+  @@index([agentId, status])
+  @@index([propertyId])
+  @@index([clientId])
+  @@index([closedAt])
+  @@index([createdAt])
+}
+
+model Task {
+  id          String     @id @default(cuid())
+  title       String
+  description String?
+  status      TaskStatus @default(TODO)
+  priority    Priority   @default(MEDIUM)
+  dueDate     DateTime?
+  completedAt DateTime?
+
+  assigneeId  String?
+  assignee    User?     @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
+  createdById String?
+  createdBy   User?     @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  leadId      String?
+  lead        Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  clientId    String?
+  client      Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  propertyId  String?
+  property    Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  dealId      String?
+  deal        Deal?     @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  activities Activity[]
+
+  @@index([assigneeId, status])
+  @@index([status, dueDate])
+  @@index([leadId])
+  @@index([clientId])
+  @@index([propertyId])
+}
+
+// ───────────────────────────── Notes & activity ─────────────────────────────
+
+/// A note is attached to exactly one record (enforced in the service layer).
+model Note {
+  id        String   @id @default(cuid())
+  content   String
+  authorId  String?
+  author    User?    @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  leadId     String?
+  lead       Lead?     @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  clientId   String?
+  client     Client?   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  ownerId    String?
+  owner      Owner?    @relation(fields: [ownerId], references: [id], onDelete: Cascade)
+  propertyId String?
+  property   Property? @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  dealId     String?
+  deal       Deal?     @relation(fields: [dealId], references: [id], onDelete: Cascade)
+  viewingId  String?
+  viewing    Viewing?  @relation(fields: [viewingId], references: [id], onDelete: Cascade)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([leadId, createdAt])
+  @@index([clientId, createdAt])
+  @@index([ownerId, createdAt])
+  @@index([propertyId, createdAt])
+  @@index([dealId, createdAt])
+  @@index([viewingId, createdAt])
+}
+
+/// Append-only activity log. `entityType`/`entityId`/`entityLabel` survive deletion of the
+/// record; the nullable relations let one event appear on several timelines
+/// (e.g. a viewing shows on the property, the lead and the client).
+model Activity {
+  id          String         @id @default(cuid())
+  action      ActivityAction
+  entityType  EntityType
+  entityId    String
+  entityLabel String
+  description String
+  /// Optional JSON payload (e.g. { from, to } for status changes).
+  meta        String?
+
+  userId String?
+  user   User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  leadId     String?
+  lead       Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  clientId   String?
+  client     Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  ownerId    String?
+  owner      Owner?    @relation(fields: [ownerId], references: [id], onDelete: SetNull)
+  propertyId String?
+  property   Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  dealId     String?
+  deal       Deal?     @relation(fields: [dealId], references: [id], onDelete: SetNull)
+  viewingId  String?
+  viewing    Viewing?  @relation(fields: [viewingId], references: [id], onDelete: SetNull)
+  taskId     String?
+  task       Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([entityType, entityId])
+  @@index([userId, createdAt])
+  @@index([leadId, createdAt])
+  @@index([clientId, createdAt])
+  @@index([ownerId, createdAt])
+  @@index([propertyId, createdAt])
+  @@index([dealId, createdAt])
+  @@index([viewingId])
+  @@index([taskId])
+}
+
+// ───────────────────────────── Configuration ─────────────────────────────
+
+/// Single-row company settings (id = "default").
+model Settings {
+  id                      String   @id @default("default")
+  companyName             String   @default("ELITE Real Estate")
+  defaultCurrency         String   @default("QAR")
+  /// Default commission on sales, as a percentage of the sale price.
+  saleCommissionPercent   Float    @default(2)
+  /// Default commission on rentals, as a percentage of the contract value.
+  rentalCommissionPercent Float    @default(8.33)
+  /// Share of the commission paid to the agent; the rest is the company's.
+  agentSharePercent       Float    @default(40)
+  updatedAt               DateTime @updatedAt
+}
+
+/// Monotonic counters for human-friendly references (ELT-1001, DL-1001).
+model Counter {
+  name  String @id
+  value Int
+}

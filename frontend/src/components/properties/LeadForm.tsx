@@ -5,7 +5,7 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useTranslations } from 'next-intl';
-import api, { apiErrorMessage } from '@/lib/api';
+import axios from 'axios';
 
 const leadSchema = z.object({
   full_name: z.string().min(3, 'Name is required'),
@@ -24,9 +24,6 @@ const LeadForm: React.FC<LeadFormProps> = ({ propertyId }) => {
   const t = useTranslations('common');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isSuccess, setIsSuccess] = React.useState(false);
-  const [submitError, setSubmitError] = React.useState<string | null>(null);
-  // Honeypot: hidden from people, filled in by bots.
-  const [website, setWebsite] = React.useState('');
 
   const {
     register,
@@ -39,18 +36,15 @@ const LeadForm: React.FC<LeadFormProps> = ({ propertyId }) => {
 
   const onSubmit = async (data: LeadFormData) => {
     setIsSubmitting(true);
-    setSubmitError(null);
     try {
-      // Saved as a lead in the CRM (routed to the listing's agent when there is one).
-      await api.post('/public/leads', {
+      await axios.post(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/leads`, {
         ...data,
-        propertyId: propertyId || undefined,
-        website: website || undefined,
+        propertyId,
       });
       setIsSuccess(true);
       reset();
     } catch (error) {
-      setSubmitError(apiErrorMessage(error, 'Your message could not be sent. Please try again or call us.'));
+      console.error('Error submitting lead:', error);
     } finally {
       setIsSubmitting(false);
     }
@@ -72,16 +66,10 @@ const LeadForm: React.FC<LeadFormProps> = ({ propertyId }) => {
   }
 
   return (
-    <div className="relative bg-white p-6 rounded-lg shadow-sm border border-gray-100">
+    <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
       <h3 className="text-xl font-bold mb-6 text-gray-900">{t('send_inquiry')}</h3>
       
       <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
-        <div aria-hidden="true" className="absolute -left-[9999px] h-px w-px overflow-hidden">
-          <label>
-            Website
-            <input tabIndex={-1} autoComplete="off" value={website} onChange={(e) => setWebsite(e.target.value)} />
-          </label>
-        </div>
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">{t('full_name')}</label>
           <input
@@ -124,8 +112,6 @@ const LeadForm: React.FC<LeadFormProps> = ({ propertyId }) => {
           />
           {errors.message && <p className="text-red-500 text-xs mt-1">{errors.message.message}</p>}
         </div>
-
-        {submitError && <p className="text-red-600 text-sm font-medium" role="alert">{submitError}</p>}
 
         <button
           type="submit"
