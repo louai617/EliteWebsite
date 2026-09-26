@@ -8,8 +8,11 @@
 ```bash
 # CRM
 cd backend && npm install && cp .env.example .env
-npx prisma migrate dev && npx prisma db seed && npm run dev
+npx prisma migrate dev && npx prisma db seed && npm run dev   # http://localhost:3001/login
 
 # Website
-cd frontend && npm install && npm run dev
+cd frontend && npm install && npm run dev                       # http://localhost:3000
 ```
+
+The CRM logins (in `backend/README.md`) only work at **localhost:3001**. The website's own
+`/login` page talks to a separate API that is not part of this repo.

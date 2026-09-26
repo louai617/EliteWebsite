@@ -14,7 +14,7 @@ npm install                 # also runs `prisma generate`
 cp .env.example .env        # then set SESSION_SECRET (openssl rand -base64 32)
 npx prisma migrate dev      # creates ./dev.db and applies migrations
 npx prisma db seed          # realistic Doha demo data (wipes CRM tables first)
-npm run dev                 # http://localhost:3000
+npm run dev                 # http://localhost:3001/login
 ```
 
 `DATABASE_URL` defaults to `file:./dev.db`, so `npm install` and the Prisma commands also work
@@ -22,6 +22,10 @@ before `.env` exists. `SESSION_SECRET` has a development-only fallback; producti
 start without it.
 
 Production: `npm run build && npm start` (apply migrations with `npm run db:deploy`).
+
+The CRM runs on **port 3001** so it never clashes with the public website in `frontend/`
+(port 3000). The website's `/login` page is a different system: use
+http://localhost:3001/login for the CRM.
 
 ### Development accounts (created by the seed)
 
