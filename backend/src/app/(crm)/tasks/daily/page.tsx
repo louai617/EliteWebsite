@@ -70,7 +70,7 @@ export default async function DailyTasksPage({ searchParams }: PageProps<"/tasks
         <TasksNav viewer={viewer} />
       </PageHeader>
 
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <DayStepper date={date} today={today} />
         <p className="text-sm text-muted-foreground">
           <span className="tabular font-medium text-foreground">{done}</span> of <span className="tabular">{tasks.length}</span> completed
@@ -78,7 +78,7 @@ export default async function DailyTasksPage({ searchParams }: PageProps<"/tasks
       </div>
 
       {team && byAgent.size > 0 && (
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {[...byAgent.values()].map((r) => {
             const pct = Math.round((r.done / Math.max(1, r.total)) * 100);
             const active = assignee === r.user.id;
@@ -104,7 +104,7 @@ export default async function DailyTasksPage({ searchParams }: PageProps<"/tasks
         </div>
       )}
 
-      <Card className="overflow-hidden">
+      <Card className="mb-4 overflow-hidden">
         <TaskList
           tasks={tasks}
           agents={agents}

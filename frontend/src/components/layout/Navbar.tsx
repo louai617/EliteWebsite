@@ -5,9 +5,10 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
-import { Menu, X, Globe, Phone, User } from 'lucide-react';
+import { Menu, X, Globe, User } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { crmHome, useAuth } from '@/lib/AuthContext';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
@@ -20,6 +21,10 @@ const Navbar = () => {
   const router = useRouter();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const { user } = useAuth();
+  // Signed-in clients go to their portal, staff to the CRM.
+  const accountHref = user ? (user.app === 'crm' ? crmHome() : `/${locale}/dashboard`) : `/${locale}/login`;
+  const accountLabel = user ? (locale === 'ar' ? 'حسابي' : 'My account') : t('login');
 
   const isHomePage = pathname === `/${locale}` || pathname === `/${locale}/`;
   const shouldShowSolidNav = isScrolled || !isHomePage;
@@ -98,14 +103,14 @@ const Navbar = () => {
               {locale === 'en' ? 'عربي' : 'EN'}
             </button>
             <Link 
-              href={`/${locale}/login`}
+              href={accountHref}
               className={cn(
                 "flex items-center gap-2 font-bold transition-colors hover:text-[#b98f42]",
                 shouldShowSolidNav ? "text-gray-900" : "text-white"
               )}
             >
               <User className="w-5 h-5" />
-              {t('login')}
+              {accountLabel}
             </Link>
             <Link 
               href={`/${locale}/contact`}
@@ -152,12 +157,12 @@ const Navbar = () => {
               </Link>
             ))}
             <Link 
-              href={`/${locale}/login`}
+              href={accountHref}
               onClick={() => setIsMobileMenuOpen(false)}
               className="text-lg font-bold text-gray-900 py-2 border-b border-gray-100 flex items-center gap-2"
             >
               <User className="w-5 h-5" />
-              {t('login')}
+              {accountLabel}
             </Link>
             <Link 
               href={`/${locale}/contact`}

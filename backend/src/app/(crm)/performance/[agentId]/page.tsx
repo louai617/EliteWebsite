@@ -56,14 +56,14 @@ export default async function AgentPerformancePage({ params, searchParams }: Pag
         <RangePicker range={range} today={today} />
       </Toolbar>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Score" value={fmt(summary?.score ?? 0)} icon={Trophy} accent hint={`${summary?.days ?? 0} day(s)`} />
         <StatCard label="Average per day" value={fmt(summary && summary.days ? summary.score / summary.days : 0)} icon={Gauge} />
         <StatCard label="Tasks completed" value={summary?.totals.tasksCompleted ?? 0} icon={CheckCircle2} hint={summary?.avgTaskCompletionHours != null ? `avg ${fmt(summary.avgTaskCompletionHours)}h to complete` : undefined} />
         <StatCard label="Overdue now" value={overdueTasks.length} icon={AlertTriangle} hint={`${missedDaily.length} missed daily task(s) in period`} />
       </div>
 
-      <Card>
+      <Card className="mb-4">
         <CardHeader>
           <CardTitle className="text-sm">Daily score · last 30 days</CardTitle>
         </CardHeader>

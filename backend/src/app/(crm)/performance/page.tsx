@@ -45,7 +45,7 @@ export default async function PerformancePage({ searchParams }: PageProps<"/perf
         <RangePicker range={range} today={today} />
       </Toolbar>
 
-      <Card className="overflow-hidden">
+      <Card className="mb-4 overflow-hidden">
         <CardHeader>
           <CardTitle className="text-sm">Leaderboard</CardTitle>
         </CardHeader>
@@ -101,7 +101,7 @@ export default async function PerformancePage({ searchParams }: PageProps<"/perf
       </Card>
 
       {board.agents.length > 0 && (
-        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+        <div className="mb-4 grid gap-4 md:grid-cols-2 xl:grid-cols-3">
           {board.agents.map((a) => (
             <Card key={a.agent.id}>
               <CardHeader className="flex-row items-center justify-between">

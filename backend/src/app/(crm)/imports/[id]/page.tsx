@@ -42,7 +42,7 @@ export default async function ImportRunPage({ params, searchParams }: PageProps<
           </span>
         }
       />
-      <Card>
+      <Card className="mb-4">
         <CardContent className="pt-5">
           <InfoList
             columns={3}

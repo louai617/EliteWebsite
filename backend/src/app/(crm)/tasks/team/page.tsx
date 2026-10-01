@@ -70,7 +70,7 @@ export default async function TeamTasksPage({ searchParams }: PageProps<"/tasks/
         <TasksNav viewer={viewer} />
       </PageHeader>
 
-      <Card>
+      <Card className="mb-4">
         <CardHeader className="flex-row items-center justify-between">
           <CardTitle className="text-sm">Workload</CardTitle>
           {workload.unassigned > 0 && (

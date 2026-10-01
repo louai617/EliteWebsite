@@ -36,6 +36,6 @@ export const publicLeadSchema = z.object({
   message: optionalText(2000),
   /** Website listing reference or CRM property id, if the enquiry is about a listing. */
   propertyRef: optionalText(120),
-  /** Honeypot — must stay empty (bots fill every field). */
-  website: z.string().max(0, "Invalid submission").optional(),
+  /** Honeypot — real visitors never fill it; bots that do get a silent fake success. */
+  website: z.string().max(500).optional(),
 });

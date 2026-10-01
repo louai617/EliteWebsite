@@ -94,3 +94,29 @@ export async function revokePortalAccess(actor: Actor, clientId: string) {
 export function portalAccessFor(clientId: string) {
   return db.user.findUnique({ where: { clientId }, select: { id: true, email: true, isActive: true, lastLoginAt: true, createdAt: true } });
 }
+
+/**
+ * "Forgot password" without an e-mail service: opens a task for the team to reset the
+ * password and contact the person. Callers always get the same response, so the endpoint
+ * can't be used to discover which e-mails have accounts. One task per account per day.
+ */
+export async function requestPasswordReset(email: string) {
+  const user = await db.user.findUnique({ where: { email }, select: { id: true, name: true, role: true, isActive: true, clientId: true, client: { select: { agentId: true } } } });
+  if (!user || !user.isActive) return;
+  const autoKey = `password-reset:${user.id}:${new Date().toISOString().slice(0, 10)}`;
+  if (await db.task.findUnique({ where: { autoKey }, select: { id: true } })) return;
+  const isClient = user.role === "CLIENT";
+  await db.task.create({
+    data: {
+      title: `Reset ${isClient ? "client portal" : "CRM"} password for ${user.name}`,
+      description: `${user.name} (${email}) asked to reset their password. Verify their identity by phone before setting a new password${isClient ? " from the client's “Client portal” card" : " from Users"}.`,
+      type: isClient ? "CLIENT_FOLLOW_UP" : "GENERAL",
+      priority: "HIGH",
+      dueDate: new Date(Date.now() + 4 * 3_600_000),
+      clientId: user.clientId,
+      assigneeId: isClient ? (user.client?.agentId ?? null) : null,
+      autoKey,
+      events: { create: { type: "CREATED", message: "Created from a “forgot password” request" } },
+    },
+  });
+}

@@ -27,7 +27,9 @@ import {
   type PropertyType,
   type Role,
   type TaskStatus,
+  type TaskType,
   type ViewingStatus,
+  type WorkActivityType,
 } from "../src/generated/prisma/client";
 import { calculateCommission } from "../src/lib/commission";
 
@@ -140,9 +142,18 @@ function log(
 
 async function wipe() {
   // Children first (FK order).
+  await db.importRecord.deleteMany();
+  await db.importRun.deleteMany();
+  await db.externalListing.deleteMany();
+  await db.agentActivity.deleteMany();
+  await db.dailyReport.deleteMany();
+  await db.taskEvent.deleteMany();
+  await db.systemJob.deleteMany();
+  await db.scoringRule.deleteMany();
   await db.activity.deleteMany();
   await db.note.deleteMany();
   await db.task.deleteMany();
+  await db.dailyTaskTemplate.deleteMany();
   await db.deal.deleteMany();
   await db.viewing.deleteMany();
   await db.propertyInterest.deleteMany();
@@ -261,7 +272,10 @@ async function main() {
     { type: "COMPOUND_VILLA", beds: [3, 5], sqm: [280, 450], rent: [15000, 26000], sale: [3_500_000, 6_500_000] },
     { type: "DUPLEX", beds: [2, 4], sqm: [180, 320], rent: [14000, 24000], sale: [2_800_000, 5_000_000] },
     { type: "OFFICE", beds: [0, 0], sqm: [90, 400], rent: [12000, 40000], sale: [2_000_000, 7_000_000] },
+    { type: "SHOP", beds: [0, 0], sqm: [45, 220], rent: [9000, 35000], sale: [1_800_000, 6_000_000] },
+    { type: "WAREHOUSE", beds: [0, 0], sqm: [300, 1500], rent: [15000, 45000], sale: [4_000_000, 12_000_000] },
   ];
+  const COMMERCIAL: PropertyType[] = ["OFFICE", "SHOP", "WAREHOUSE"];
   const TITLE_ADJ = ["Sea-view", "Spacious", "Modern", "Fully furnished", "Brand new", "Upgraded", "Bright", "Luxury", "Corner", "Family"];
   const TYPE_WORD: Record<PropertyType, string> = {
     APARTMENT: "apartment", VILLA: "villa", TOWNHOUSE: "townhouse", PENTHOUSE: "penthouse", STUDIO: "studio",
@@ -285,11 +299,15 @@ async function main() {
       ? pick(TEMPLATES.filter((t) => ["VILLA", "COMPOUND_VILLA", "TOWNHOUSE"].includes(t.type)))
       : loc.area === "West Bay" && chance(0.3)
         ? TEMPLATES.find((t) => t.type === "OFFICE")!
-        : pick(TEMPLATES.filter((t) => !["VILLA", "COMPOUND_VILLA", "OFFICE"].includes(t.type)));
+        : i % 10 === 4
+          ? TEMPLATES.find((t) => t.type === "SHOP")!
+          : i === 17
+            ? TEMPLATES.find((t) => t.type === "WAREHOUSE")!
+            : pick(TEMPLATES.filter((t) => !["VILLA", "COMPOUND_VILLA", ...COMMERCIAL].includes(t.type)));
     let status = statusPlan[i];
     const purpose: ListingPurpose = status === "SOLD" ? "SALE" : status === "RENTED" ? "RENT" : chance(0.6) ? "RENT" : "SALE";
     const beds = int(tpl.beds[0], tpl.beds[1]);
-    const isResidential = tpl.type !== "OFFICE";
+    const isResidential = !COMMERCIAL.includes(tpl.type);
     const sqm = int(tpl.sqm[0], tpl.sqm[1]);
     const price = purpose === "RENT" ? roundTo(int(tpl.rent[0], tpl.rent[1]), 500) : roundTo(int(tpl.sale[0], tpl.sale[1]), 50_000);
     const building = pick(loc.buildings);
@@ -306,6 +324,10 @@ async function main() {
         reference: `ELT-${1001 + i}`,
         title,
         type: tpl.type,
+        // Property hierarchy: Residential / Commercial × Company / Private.
+        category: isResidential ? "RESIDENTIAL" : "COMMERCIAL",
+        subcategory: i % 3 === 0 ? "COMPANY" : "PRIVATE",
+        lastPostedAt: status === "AVAILABLE" && chance(0.7) ? daysAgo(int(1, 25)) : null,
         purpose,
         status,
         price,
@@ -575,6 +597,11 @@ async function main() {
     ...Array.from({ length: 5 }, (_, i) => ({ due: -(i + 3), status: "COMPLETED" as TaskStatus })),
     ...Array.from({ length: 2 }, (_, i) => ({ due: -(i + 6), status: "CANCELLED" as TaskStatus })),
   ];
+  const TITLE_TYPE: Record<string, TaskType> = {
+    "Call back about budget": "CALL",
+    "Renew Property Finder listing": "PROPERTY_REPOST",
+    "Update listing description": "PROPERTY_POSTING",
+  };
   for (const [i, plan] of taskPlan.entries()) {
     const assignee = i % 6 === 5 ? pick(managers) : agents[i % agents.length];
     const lead = chance(0.6) ? leads[(i * 7) % leads.length] : null;
@@ -583,16 +610,31 @@ async function main() {
     const dueDate = plan.due >= 0 ? daysFromNow(plan.due, int(10, 17)) : daysAgo(-plan.due, int(10, 17));
     const createdAt = new Date(Math.min(dueDate.getTime(), now.getTime()) - int(2, 8) * DAY);
     const title = TASK_TITLES[i % TASK_TITLES.length];
+    const creator = pick(managers);
+    const type: TaskType = TITLE_TYPE[title] ?? (lead ? "LEAD_FOLLOW_UP" : client ? "CLIENT_FOLLOW_UP" : "GENERAL");
+    const startedAt = plan.status === "IN_PROGRESS" || plan.status === "COMPLETED" ? new Date(createdAt.getTime() + DAY) : null;
     const task = await db.task.create({
       data: {
         title,
+        type,
         description: chance(0.5) ? "Keep the client updated on WhatsApp once done." : null,
         status: plan.status,
         priority: pick(PRIORITIES),
         dueDate,
+        startedAt,
         completedAt: plan.status === "COMPLETED" ? dueDate : null,
         assigneeId: assignee.id,
-        createdById: pick(managers).id,
+        createdById: creator.id,
+        assignedById: creator.id,
+        clientVisible: Boolean(client) && ["Collect QID copy", "Send payment schedule", "Arrange key handover"].includes(title),
+        events: {
+          create: [
+            { type: "CREATED", actorId: creator.id, toValue: "TODO", createdAt },
+            ...(startedAt ? [{ type: "STATUS_CHANGED" as const, actorId: assignee.id, fromValue: "TODO", toValue: "IN_PROGRESS", createdAt: startedAt }] : []),
+            ...(plan.status === "COMPLETED" ? [{ type: "STATUS_CHANGED" as const, actorId: assignee.id, fromValue: "IN_PROGRESS", toValue: "COMPLETED", createdAt: dueDate }] : []),
+            ...(plan.status === "CANCELLED" ? [{ type: "STATUS_CHANGED" as const, actorId: creator.id, fromValue: "TODO", toValue: "CANCELLED", message: "No longer needed", createdAt: dueDate }] : []),
+          ],
+        },
         leadId: lead?.id ?? null,
         clientId: client?.id ?? null,
         propertyId: property?.id ?? null,
@@ -604,6 +646,162 @@ async function main() {
       log("COMPLETED", "TASK", task.id, task.title, `Completed task “${task.title}”`, assignee.id, dueDate, { taskId: task.id, leadId: lead?.id, propertyId: property?.id });
     }
   }
+
+  // ─── Lead response tasks (what the CRM creates when a lead is assigned) ───
+  for (const lead of leads.filter((l) => l.status === "NEW" && l.agentId)) {
+    await db.task.create({
+      data: {
+        title: `Respond to new lead ${lead.fullName}`,
+        type: "LEAD_RESPONSE",
+        priority: "HIGH",
+        dueDate: new Date(lead.createdAt.getTime() + 60 * 60_000),
+        leadId: lead.id,
+        assigneeId: lead.agentId,
+        autoKey: `lead-response:${lead.id}:${lead.agentId}`,
+        createdAt: lead.createdAt,
+        events: { create: { type: "CREATED", message: "Created automatically for a newly assigned lead", createdAt: lead.createdAt } },
+      },
+    });
+  }
+
+  // ─── Client portal account (client@elite.qa) ───
+  const portalClient = clients[0];
+  await db.user.create({
+    data: {
+      name: portalClient.fullName,
+      email: "client@elite.qa",
+      phone: portalClient.phone,
+      role: "CLIENT",
+      clientId: portalClient.id,
+      passwordHash: await bcrypt.hash("Client@2026", 12),
+      createdAt: daysAgo(30),
+    },
+  });
+  const shortlist = properties.filter((p) => p.status === "AVAILABLE" && p.purpose === (["TENANT", "LANDLORD"].includes(portalClient.clientType) ? "RENT" : "SALE")).slice(0, 3);
+  for (const property of shortlist) {
+    await db.propertyInterest.create({ data: { propertyId: property.id, clientId: portalClient.id, createdAt: daysAgo(int(3, 15)) } }).catch(() => undefined);
+  }
+  if (shortlist[0]) {
+    const startsAt = daysFromNow(2, 17);
+    await db.viewing.create({
+      data: { propertyId: shortlist[0].id, clientId: portalClient.id, agentId: portalClient.agentId, startsAt, endsAt: new Date(startsAt.getTime() + 45 * 60_000), status: "CONFIRMED", createdAt: daysAgo(1) },
+    });
+  }
+  await db.task.create({
+    data: {
+      title: "Send a copy of your QID and passport",
+      description: "Needed to prepare the tenancy contract. You can send them to your agent on WhatsApp.",
+      type: "CLIENT_FOLLOW_UP",
+      priority: "HIGH",
+      dueDate: daysFromNow(3, 12),
+      clientId: portalClient.id,
+      assigneeId: portalClient.agentId,
+      createdById: portalClient.agentId,
+      assignedById: portalClient.agentId,
+      clientVisible: true,
+      events: { create: { type: "CREATED", actorId: portalClient.agentId, toValue: "TODO" } },
+    },
+  });
+
+  // ─── Daily task templates ───
+  const templateSpecs: { title: string; taskType: TaskType; activityType: WorkActivityType; targetCount: number; priority: Priority; dueHour: number }[] = [
+    { title: "Make 20 calls", taskType: "CALL", activityType: "CALL", targetCount: 20, priority: "HIGH", dueHour: 18 },
+    { title: "Follow up with 5 leads", taskType: "LEAD_FOLLOW_UP", activityType: "FOLLOW_UP", targetCount: 5, priority: "MEDIUM", dueHour: 17 },
+    { title: "Repost 5 listings", taskType: "PROPERTY_REPOST", activityType: "PROPERTY_REPOST", targetCount: 5, priority: "MEDIUM", dueHour: 13 },
+    { title: "Post 1 new listing on the portals", taskType: "PROPERTY_POSTING", activityType: "PROPERTY_POST", targetCount: 1, priority: "LOW", dueHour: 18 },
+  ];
+  const templates = [];
+  for (const [i, spec] of templateSpecs.entries()) {
+    templates.push(await db.dailyTaskTemplate.create({ data: { ...spec, description: "Counts automatically from logged activity.", sortOrder: i + 1, createdAt: daysAgo(40) } }));
+  }
+
+  // ─── Agent activity history (last 21 days + today so far) ───
+  // Each agent has a different work rate so the leaderboard and trends are meaningful.
+  const businessDay = (d: Date) => d.toLocaleDateString("en-CA"); // TZ is Asia/Qatar (set above)
+  const atHour = (daysBack: number, hour: number, minute = int(0, 59)) => {
+    const d = new Date(now.getTime() - daysBack * DAY);
+    d.setHours(hour, minute, 0, 0);
+    return d;
+  };
+  const workRate = new Map(agents.map((a, i) => [a.id, [1.25, 1.05, 0.9, 0.75, 0.6][i % 5]]));
+  const activityRows: {
+    type: WorkActivityType; source: "MANUAL" | "SYSTEM"; agentId: string; loggedById: string; occurredAt: Date; businessDate: string;
+    outcome?: string | null; leadId?: string | null; propertyId?: string | null; viewingId?: string | null; dealId?: string | null; dedupeKey?: string | null;
+  }[] = [];
+  const nowHour = now.getHours();
+  for (let back = 21; back >= 0; back--) {
+    const day = new Date(now.getTime() - back * DAY);
+    const friday = day.getDay() === 5;
+    const date = businessDay(day);
+    for (const agent of agents) {
+      const rate = (workRate.get(agent.id) ?? 1) * (friday ? 0.3 : 1);
+      const lastHour = back === 0 ? Math.max(9, Math.min(nowHour, 19)) : 19;
+      if (back === 0 && nowHour < 9) continue;
+      const at = () => atHour(back, int(9, lastHour - 1));
+      const counts: [WorkActivityType, number][] = [
+        ["CALL", Math.round(int(12, 26) * rate)],
+        ["FOLLOW_UP", Math.round(int(2, 7) * rate)],
+        ["CLIENT_FOLLOW_UP", Math.round(int(0, 3) * rate)],
+        ["PROPERTY_REPOST", Math.round(int(2, 7) * rate)],
+        ["PROPERTY_POST", chance(0.6 * rate) ? 1 : 0],
+        ["LEAD_QUALIFICATION", chance(0.35 * rate) ? 1 : 0],
+      ];
+      const scale = back === 0 ? Math.max(0, (lastHour - 9) / 10) : 1;
+      const agentProps = properties.filter((p) => p.agentId === agent.id);
+      for (const [type, n] of counts) {
+        for (let k = 0; k < Math.round(n * scale); k++) {
+          activityRows.push({
+            type, source: "MANUAL", agentId: agent.id, loggedById: agent.id, occurredAt: at(), businessDate: date,
+            outcome: type === "CALL" ? pick(["Interested, call back", "No answer", "Sent details on WhatsApp", "Booked viewing", null]) : null,
+            propertyId: type.startsWith("PROPERTY_") && agentProps.length ? pick(agentProps).id : null,
+          });
+        }
+      }
+      for (const tpl of templates) {
+        if (back === 0) continue; // today's are generated by the app (scheduler / first page view)
+        const done = activityRows.filter((r) => r.agentId === agent.id && r.businessDate === date && r.type === tpl.activityType).length;
+        const completed = done >= tpl.targetCount;
+        const dueDate = atHour(back, tpl.dueHour, 0);
+        await db.task.create({
+          data: {
+            title: tpl.targetCount > 1 ? `${tpl.title} (${tpl.targetCount})` : tpl.title,
+            description: tpl.description,
+            type: tpl.taskType,
+            priority: tpl.priority,
+            status: completed ? "COMPLETED" : "TODO",
+            dueDate,
+            startedAt: done > 0 ? atHour(back, 9, 30) : null,
+            completedAt: completed ? atHour(back, Math.min(tpl.dueHour, 17), 30) : null,
+            dailyDate: date,
+            templateId: tpl.id,
+            targetCount: tpl.targetCount,
+            assigneeId: agent.id,
+            autoKey: `daily:${tpl.id}:${agent.id}:${date}`,
+            createdAt: atHour(back, 0, 1),
+            events: { create: { type: "CREATED", message: `Daily task for ${date}`, createdAt: atHour(back, 0, 1) } },
+          },
+        });
+      }
+      // Most agents submit their end-of-day report.
+      if (back > 0 && chance(0.4 + 0.4 * (workRate.get(agent.id) ?? 1) - (friday ? 0.3 : 0))) {
+        await db.dailyReport.create({
+          data: {
+            agentId: agent.id, date, status: "OPEN", submittedAt: atHour(back, 19, int(0, 50)),
+            summary: pick(["Calls with new Property Finder leads, two viewings booked for tomorrow.", "Reposted listings and followed up on pending offers.", "Focused on landlord follow-ups and new listings in Lusail."]),
+            blockers: chance(0.2) ? "Waiting for owner approval on the price reduction." : null,
+          },
+        });
+      }
+    }
+  }
+  // Viewings and conversions recorded by the CRM (same keys the app uses, so nothing double-counts).
+  for (const v of viewings.filter((v) => v.status === "COMPLETED" && v.agentId && now.getTime() - v.endsAt.getTime() < 22 * DAY)) {
+    activityRows.push({ type: "VIEWING", source: "SYSTEM", agentId: v.agentId!, loggedById: v.agentId!, occurredAt: v.endsAt, businessDate: businessDay(v.endsAt), viewingId: v.id, propertyId: v.propertyId, leadId: v.leadId, dedupeKey: `viewing-completed:${v.id}` });
+  }
+  for (const d of deals.filter((d) => d.status === "CLOSED_WON" && d.closedAt && d.agentId && now.getTime() - d.closedAt.getTime() < 22 * DAY)) {
+    activityRows.push({ type: "CONVERSION", source: "SYSTEM", agentId: d.agentId!, loggedById: d.agentId!, occurredAt: d.closedAt!, businessDate: businessDay(d.closedAt!), dealId: d.id, leadId: d.leadId, dedupeKey: d.leadId ? `conversion:lead:${d.leadId}` : `conversion:deal:${d.id}` });
+  }
+  await db.agentActivity.createMany({ data: activityRows });
 
   // ─── Notes ───
   const NOTE_TEXT = [
@@ -644,11 +842,17 @@ async function main() {
     viewings: await db.viewing.count(),
     deals: await db.deal.count(),
     tasks: await db.task.count(),
+    workActivities: await db.agentActivity.count(),
+    dailyTemplates: await db.dailyTaskTemplate.count(),
     notes: await db.note.count(),
     activities: await db.activity.count(),
   };
   console.table(counts);
-  console.log("Done. Log in with admin@elite.qa / Admin@2026 (see README for the other accounts).");
+
+  // Freeze the history into daily reports with the app's own rollover code (scores, breakdowns).
+  console.log("Finalizing daily reports for the last 21 days…");
+  execSync("npm run --silent reports:backfill -- 21", { stdio: "inherit" });
+  console.log("Done. Log in with admin@elite.qa / Admin@2026, client portal: client@elite.qa / Client@2026 (see README).");
 }
 
 main()

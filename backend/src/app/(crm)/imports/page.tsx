@@ -37,7 +37,7 @@ export default async function ImportsPage({ searchParams }: PageProps<"/imports"
     <>
       <PageHeader title="Imports" description="Bring listings in from Property Finder and Qatar Living. Imports are validated, de-duplicated and logged record by record." />
 
-      <div className="grid gap-4 lg:grid-cols-2">
+      <div className="mb-4 grid gap-4 lg:grid-cols-2">
         {statuses.map((s) => (
           <Card key={s.source}>
             <CardHeader className="flex-row items-center justify-between">

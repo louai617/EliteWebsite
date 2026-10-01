@@ -140,17 +140,28 @@ export function computeScore(metrics: DailyMetrics, rules: ScoringRules = DEFAUL
   return { total: round1(items.reduce((sum, i) => sum + i.points, 0)), items };
 }
 
-/** Sums several daily breakdowns into one (weekly/monthly views). */
+/** Sums several daily breakdowns into one (weekly/monthly views), keeping a readable value per metric. */
 export function sumBreakdowns(results: ScoreResult[]): ScoreResult {
-  const byKey = new Map<string, ScoreItem>();
+  const acc = new Map<string, { item: ScoreItem; sum: number; applicable: number; days: number }>();
   for (const result of results) {
     for (const item of result.items) {
-      const existing = byKey.get(item.key);
-      if (existing) existing.points = round1(existing.points + item.points);
-      else byKey.set(item.key, { ...item, value: "", explanation: "Sum of daily points" });
+      const entry = acc.get(item.key) ?? { item: { ...item, points: 0 }, sum: 0, applicable: 0, days: 0 };
+      entry.item.points = round1(entry.item.points + item.points);
+      entry.days++;
+      if (item.measure != null) {
+        entry.sum += item.measure;
+        entry.applicable++;
+      }
+      acc.set(item.key, entry);
     }
   }
-  const items = [...byKey.values()];
+  const items = [...acc.values()].map(({ item, sum, applicable, days }) => {
+    const value =
+      item.kind === "count" ? `${round1(sum)} total`
+      : item.kind === "flag" ? `${sum}/${days} days`
+      : applicable ? `avg ${pct(sum / applicable)} (${applicable} day${applicable === 1 ? "" : "s"})` : "not applicable";
+    return { ...item, value, measure: applicable ? sum : null, explanation: `Sum of ${days} daily score${days === 1 ? "" : "s"}` };
+  });
   return { total: round1(items.reduce((s, i) => s + i.points, 0)), items };
 }
 

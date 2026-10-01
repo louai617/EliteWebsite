@@ -65,7 +65,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
         )}
       </Toolbar>
 
-      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="mb-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Calls made" value={formatNumber(t.callsMade)} icon={PhoneCall} hint={periodLabel} />
         <StatCard label="Leads received / answered" value={`${formatNumber(t.leadsReceived)} / ${formatNumber(t.leadsAnswered)}`} icon={UserCheck} hint={`${formatNumber(t.leadsConverted)} converted`} />
         <StatCard label="Properties posted / reposted" value={`${formatNumber(t.propertiesPosted)} / ${formatNumber(t.propertiesReposted)}`} icon={Megaphone} hint={`${formatNumber(t.newListings)} new listings`} />
@@ -77,7 +77,7 @@ export default async function ReportsPage({ searchParams }: PageProps<"/reports"
       </div>
 
       {team && !single && summary.agents.length > 0 && (
-        <Card className="overflow-hidden">
+        <Card className="mb-4 overflow-hidden">
           <CardHeader>
             <CardTitle className="text-sm">By agent · {periodLabel}</CardTitle>
           </CardHeader>

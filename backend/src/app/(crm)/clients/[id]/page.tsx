@@ -23,6 +23,10 @@ import { ActivityTimeline } from "@/components/shared/activity-timeline";
 import { AgentCell } from "@/components/shared/user-avatar";
 import { RecordActions } from "@/components/shared/record-actions";
 import { LogActivityButton } from "@/components/activities/log-activity";
+import { PortalAccessCard } from "@/components/clients/portal-access";
+import { portalAccessFor } from "@/services/client-accounts";
+import { hasPermission } from "@/lib/permissions";
+import { CLIENT_APP_URL } from "@/lib/env";
 import { InterestList } from "@/components/shared/interest-list";
 import { DealMiniList, ViewingMiniList } from "@/components/shared/related-lists";
 import { ClientHeaderActions } from "@/components/clients/client-header-actions";
@@ -36,12 +40,13 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
   const client = await getClient(user, id);
   if (!client) notFound();
   const viewer = toViewer(user);
-  const [notes, activity, agents, settings, tasks] = await Promise.all([
+  const [notes, activity, agents, settings, tasks, portalAccount] = await Promise.all([
     listNotes("client", id),
     timeline("clientId", id, 40),
     listAssignableUsers(),
     getSettings(),
     listTasks(user, { page: 1, pageSize: 50, sort: "dueDate", dir: "asc" }, { clientId: id }),
+    portalAccessFor(id),
   ]);
   const clientOption = { id: client.id, label: client.fullName };
   const firstProperty = client.interests[0]?.property;
@@ -177,6 +182,14 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
         </div>
 
         <aside className="space-y-5">
+          <Card>
+            <CardHeader>
+              <CardTitle>Client portal</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <PortalAccessCard clientId={client.id} defaultEmail={client.email} account={portalAccount} portalUrl={CLIENT_APP_URL} canManage={hasPermission(user, "clients.managePortal")} />
+            </CardContent>
+          </Card>
           <NotesPanel target="client" targetId={client.id} notes={notes} currentUserId={user.id} isManager={viewer.isManager} />
           <Card>
             <CardHeader>

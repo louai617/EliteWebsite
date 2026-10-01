@@ -109,7 +109,7 @@ export default async function DashboardPage() {
       </div>
 
       {/* Today's work (daily report, live) */}
-      <Card>
+      <Card className="mt-3">
         <CardHeader className="flex-row items-center justify-between">
           <div>
             <CardTitle>Today&apos;s work</CardTitle>

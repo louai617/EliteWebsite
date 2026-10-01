@@ -17,7 +17,8 @@
     "db:studio": "prisma studio",
     "test": "node tests/run.mjs",
     "db:backup": "node scripts/backup-db.mjs",
-    "cron:daily": "node --conditions=react-server --import tsx scripts/daily-rollover.ts"
+    "cron:daily": "node --conditions=react-server --import tsx scripts/daily-rollover.ts",
+    "reports:backfill": "node --conditions=react-server --import tsx scripts/backfill-reports.ts"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",

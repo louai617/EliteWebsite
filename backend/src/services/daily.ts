@@ -243,7 +243,24 @@ export async function finalizeDay(date: BusinessDate) {
     await db.dailyReport.upsert({ where: { agentId_date: { agentId, date } }, create: { agentId, date, ...data }, update: data });
     finalized++;
   }
+  await expireDailyTasks(date);
   return finalized;
+}
+
+/**
+ * A daily task belongs to its day: once the day is closed, the ones still open are marked
+ * Cancelled with an "expired" event (they stay in history and count as missed), so they
+ * don't keep counting as overdue on every following day.
+ */
+async function expireDailyTasks(date: BusinessDate) {
+  const open = await db.task.findMany({ where: { dailyDate: date, status: { in: [...OPEN] } }, select: { id: true, status: true } });
+  for (const task of open) {
+    await db.$transaction([
+      db.task.update({ where: { id: task.id }, data: { status: "CANCELLED" } }),
+      db.taskEvent.create({ data: { taskId: task.id, type: "STATUS_CHANGED", fromValue: task.status, toValue: "CANCELLED", message: "Expired: not completed by the end of the day" } }),
+    ]);
+  }
+  return open.length;
 }
 
 /** The agent's own end-of-day report (summary + blockers). Only today's report can be submitted. */

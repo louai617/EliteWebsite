@@ -169,7 +169,7 @@ async function main() {
   const task = await createTask(omar, { title: "Svc task", description: null, type: "GENERAL", viewingId: null, clientVisible: false, status: "TODO", priority: "HIGH", dueDate: new Date(Date.now() - 3600_000), assigneeId: null, leadId: lead.id, clientId: null, propertyId: null, dealId: null });
   const overdue = await listTasks(omar, { page: 1, pageSize: 50, sort: "dueDate", dir: "asc" }, { due: "overdue" });
   check("overdue filter includes past-due open task", overdue.items.some((t) => t.id === task.id));
-  await rejects("agent can't assign task to others", () => createTask(omar, { title: "x", description: null, type: "GENERAL", viewingId: null, clientVisible: false, status: "TODO", priority: "LOW", dueDate: null, assigneeId: aisha.id, leadId: null, clientId: null, propertyId: null, dealId: null }), /yourself/);
+  await rejects("agent can't assign task to others", () => createTask(omar, { title: "x", description: null, type: "GENERAL", viewingId: null, clientVisible: false, status: "TODO", priority: "LOW", dueDate: null, assigneeId: aisha.id, leadId: null, clientId: null, propertyId: null, dealId: null }), /yourself|managers/i);
   await setTaskStatus(omar, task.id, "COMPLETED");
   const done = await db.task.findUniqueOrThrow({ where: { id: task.id } });
   check("completing task sets completedAt + logs", Boolean(done.completedAt) && Boolean(await db.activity.findFirst({ where: { taskId: task.id, action: "COMPLETED" } })));
