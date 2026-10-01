@@ -38,17 +38,17 @@ export function FormSheet({
  * Opens a create drawer when the URL contains ?new=1 (used by the global "New" menu and
  * the command palette), and strips the flag again when the drawer closes.
  */
-export function useCreateParam(setOpen: (open: boolean) => void) {
+export function useCreateParam(setOpen: (open: boolean) => void, name = "new") {
   const params = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
-  const flag = params.get("new") === "1";
+  const flag = params.get(name) === "1";
   useEffect(() => {
     if (!flag) return;
     setOpen(true);
     const next = new URLSearchParams(params.toString());
-    next.delete("new");
+    next.delete(name);
     const qs = next.toString();
     router.replace(qs ? `${pathname}?${qs}` : pathname, { scroll: false });
-  }, [flag, params, pathname, router, setOpen]);
+  }, [flag, name, params, pathname, router, setOpen]);
 }

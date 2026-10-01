@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, CalendarClock, CheckSquare, Handshake, KeyRound, Plus, UserRound, UsersRound } from "lucide-react";
+import { Building2, CalendarClock, CheckSquare, Handshake, KeyRound, PhoneCall, Plus, UserRound, UsersRound } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 
@@ -13,6 +13,7 @@ const ITEMS = [
   { href: "/viewings?new=1", label: "Viewing", icon: CalendarClock },
   { href: "/deals?new=1", label: "Deal", icon: Handshake },
   { href: "/tasks?new=1", label: "Task", icon: CheckSquare },
+  { href: "/tasks?log=1", label: "Logged activity", icon: PhoneCall },
 ];
 
 export function QuickCreate() {

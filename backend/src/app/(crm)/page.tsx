@@ -9,6 +9,7 @@ import { dashboardStats, teamPerformance } from "@/services/dashboard";
 import { recentActivity } from "@/services/activity";
 import { upcomingViewings } from "@/services/viewings";
 import { focusTasks } from "@/services/tasks";
+import { refreshOpenReport } from "@/services/daily";
 import { listAssignableUsers } from "@/services/users";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -55,13 +56,14 @@ function Metric({ label, value, href }: { label: string; value: number; href: st
 export default async function DashboardPage() {
   const user = await requireUser();
   const viewer = toViewer(user);
-  const [stats, activity, viewings, tasks, agents, team] = await Promise.all([
+  const [stats, activity, viewings, tasks, agents, team, today] = await Promise.all([
     dashboardStats(user),
     recentActivity(user, 10),
     upcomingViewings(user, 6),
     focusTasks(user, 8),
     listAssignableUsers(),
     teamPerformance(user),
+    refreshOpenReport(user.id),
   ]);
   const now = zonedNow();
   const monthCommission = stats.deals.commissionPerMonth.at(-1)?.value ?? 0;
@@ -105,6 +107,32 @@ export default async function DashboardPage() {
           hint={`${stats.leads.won} won of ${stats.leads.total} leads · ${stats.leads.lost} lost`}
         />
       </div>
+
+      {/* Today's work (daily report, live) */}
+      <Card>
+        <CardHeader className="flex-row items-center justify-between">
+          <div>
+            <CardTitle>Today&apos;s work</CardTitle>
+            <CardDescription>Live counters from your logged activity — the day closes at midnight and is kept as history.</CardDescription>
+          </div>
+          <div className="flex items-center gap-3 text-xs">
+            <Link href="/tasks/daily" className="text-muted-foreground hover:text-foreground hover:underline">
+              Daily tasks {today.dailyTasksCompleted}/{today.dailyTasksAssigned}
+            </Link>
+            <Link href={`/reports/${user.id}/${today.date}`} className="font-medium hover:underline">
+              Score {Number.isInteger(today.score ?? 0) ? (today.score ?? 0) : (today.score ?? 0).toFixed(1)} <ArrowRight className="inline size-3" />
+            </Link>
+          </div>
+        </CardHeader>
+        <div className="grid grid-cols-2 divide-x divide-y border-t sm:grid-cols-3 lg:grid-cols-6 lg:divide-y-0">
+          <Metric label="Calls" value={today.callsMade} href="/reports" />
+          <Metric label="Leads answered" value={today.leadsAnswered} href="/leads?status=CONTACTED" />
+          <Metric label="Follow-ups" value={today.followUpsCompleted} href="/reports" />
+          <Metric label="Posted / reposted" value={today.propertiesPosted + today.propertiesReposted} href="/properties" />
+          <Metric label="Viewings" value={today.viewingsCompleted} href="/viewings" />
+          <Metric label="Tasks completed" value={today.tasksCompleted} href="/tasks?tab=done" />
+        </div>
+      </Card>
 
       {/* Inventory & pipeline counts */}
       <Card className="mt-3 overflow-hidden">

@@ -166,10 +166,10 @@ async function main() {
   await rejects("property with deals can't be deleted", () => deleteProperty(manager, created.id), /deal/);
 
   // ── Tasks & notes ──
-  const task = await createTask(omar, { title: "Svc task", description: null, status: "TODO", priority: "HIGH", dueDate: new Date(Date.now() - 3600_000), assigneeId: null, leadId: lead.id, clientId: null, propertyId: null, dealId: null });
+  const task = await createTask(omar, { title: "Svc task", description: null, type: "GENERAL", viewingId: null, clientVisible: false, status: "TODO", priority: "HIGH", dueDate: new Date(Date.now() - 3600_000), assigneeId: null, leadId: lead.id, clientId: null, propertyId: null, dealId: null });
   const overdue = await listTasks(omar, { page: 1, pageSize: 50, sort: "dueDate", dir: "asc" }, { due: "overdue" });
   check("overdue filter includes past-due open task", overdue.items.some((t) => t.id === task.id));
-  await rejects("agent can't assign task to others", () => createTask(omar, { title: "x", description: null, status: "TODO", priority: "LOW", dueDate: null, assigneeId: aisha.id, leadId: null, clientId: null, propertyId: null, dealId: null }), /yourself/);
+  await rejects("agent can't assign task to others", () => createTask(omar, { title: "x", description: null, type: "GENERAL", viewingId: null, clientVisible: false, status: "TODO", priority: "LOW", dueDate: null, assigneeId: aisha.id, leadId: null, clientId: null, propertyId: null, dealId: null }), /yourself/);
   await setTaskStatus(omar, task.id, "COMPLETED");
   const done = await db.task.findUniqueOrThrow({ where: { id: task.id } });
   check("completing task sets completedAt + logs", Boolean(done.completedAt) && Boolean(await db.activity.findFirst({ where: { taskId: task.id, action: "COMPLETED" } })));
@@ -195,7 +195,7 @@ async function main() {
   await rejects("duplicate e-mail rejected", () => createUser(admin, createUserSchema.parse({ name: "X", email: "omar@elite.qa", role: "AGENT", isActive: true, password: "Abcdefgh12" })), /already used/);
   const me = await db.user.findUniqueOrThrow({ where: { id: admin.id } });
   await rejects("admin can't deactivate themself", () => updateUser(admin, { id: admin.id, name: me.name, email: me.email, phone: null, role: "ADMIN", avatarUrl: null, isActive: false }), /yourself/);
-  await rejects("only admins edit settings", () => updateSettings(manager, { companyName: "X", defaultCurrency: "QAR", saleCommissionPercent: 2, rentalCommissionPercent: 8, agentSharePercent: 40 }), /admins/);
+  await rejects("only admins edit settings", () => updateSettings(manager, { companyName: "X", defaultCurrency: "QAR", saleCommissionPercent: 2, rentalCommissionPercent: 8, agentSharePercent: 40, leadResponseSlaMinutes: 60, autoLeadResponseTasks: true }), /admins/);
 
   // ── Dashboard numbers vs direct counts ──
   const stats = await dashboardStats(admin);

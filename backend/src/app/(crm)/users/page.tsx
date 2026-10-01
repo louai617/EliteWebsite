@@ -33,7 +33,7 @@ export default async function UsersPage({ searchParams }: PageProps<"/users">) {
       />
       <Toolbar>
         <SearchInput placeholder="Search name, e-mail…" />
-        <FilterSelect param="role" label="Role" options={options(ROLE_META)} />
+        <FilterSelect param="role" label="Role" options={options(ROLE_META).filter((o) => o.value !== "CLIENT")} />
         <FilterSelect param="active" label="Status" options={[{ value: "1", label: "Active" }, { value: "0", label: "Inactive" }]} />
         <ClearFilters params={["q", "role", "active"]} />
       </Toolbar>

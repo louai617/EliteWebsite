@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Plus } from "lucide-react";
-import { Furnishing, ListingPurpose, PropertyStatus, PropertyType } from "@/generated/prisma/enums";
+import { Furnishing, ListingPurpose, PropertyCategory, PropertyStatus, PropertySubcategory, PropertyType } from "@/generated/prisma/enums";
+import { PROPERTY_CATEGORY_META, PROPERTY_SUBCATEGORY_META } from "@/lib/constants";
 import { requireUser } from "@/lib/auth/session";
 import { enumParam, intParam, listParams, param } from "@/lib/list-params";
 import { toViewer } from "@/lib/viewer";
@@ -20,6 +21,8 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/prope
   const sp = await searchParams;
   const params = listParams(sp, PROPERTY_SORTS, { sort: "updatedAt" });
   const filters = {
+    category: enumParam(sp, "category", PropertyCategory),
+    subcategory: enumParam(sp, "subcategory", PropertySubcategory),
     status: enumParam(sp, "status", PropertyStatus),
     purpose: enumParam(sp, "purpose", ListingPurpose),
     type: enumParam(sp, "type", PropertyType),
@@ -35,15 +38,21 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/prope
   const viewer = toViewer(user);
   const filtered = Boolean(params.q) || Object.values(filters).some((v) => v !== undefined && v !== false);
   const grid = param(sp, "view") === "grid";
+  // Title follows the hierarchy section opened from the sidebar, e.g. "Commercial › Company".
+  const section = [filters.category && PROPERTY_CATEGORY_META[filters.category].label, filters.subcategory && PROPERTY_SUBCATEGORY_META[filters.subcategory].label]
+    .filter(Boolean)
+    .join(" · ");
+  const newHref = `/properties/new${filters.category || filters.subcategory ? `?${new URLSearchParams({ ...(filters.category ? { category: filters.category } : {}), ...(filters.subcategory ? { subcategory: filters.subcategory } : {}) })}` : ""}`;
 
   return (
     <>
       <PageHeader
-        title="Properties"
+        title={section ? `${section} properties` : "Properties"}
+        breadcrumbs={section ? [{ label: "Properties", href: "/properties" }, { label: section }] : undefined}
         description={`${result.total} ${result.total === 1 ? "listing" : "listings"}${filtered ? " match your filters" : " in inventory"}`}
         actions={
           <Button asChild>
-            <Link href="/properties/new">
+            <Link href={newHref}>
               <Plus /> Add property
             </Link>
           </Button>

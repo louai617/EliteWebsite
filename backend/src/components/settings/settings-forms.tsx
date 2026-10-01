@@ -12,7 +12,7 @@ import { settingsSchema, type SettingsInput } from "@/schemas/settings";
 import { changePasswordSchema, profileSchema } from "@/schemas/user";
 import { Button } from "@/components/ui/button";
 import { Form } from "@/components/ui/form";
-import { TextField } from "@/components/shared/form/fields";
+import { CheckboxField, TextField } from "@/components/shared/form/fields";
 
 export function ProfileForm({ profile }: { profile: { name: string; phone: string | null; avatarUrl: string | null } }) {
   const form = useForm<z.input<typeof profileSchema>, unknown, z.output<typeof profileSchema>>({
@@ -89,6 +89,11 @@ export function CompanySettingsForm({ settings, editable }: { settings: Settings
           <TextField control={form.control} name="agentSharePercent" label="Agent share %" inputMode="decimal" required description="Share of each commission paid to the agent" />
         </fieldset>
         <Example control={form.control} />
+        <fieldset disabled={!editable} className="contents">
+          <p className="pt-2 text-xs font-semibold tracking-wide text-muted-foreground uppercase sm:col-span-2">Lead response</p>
+          <TextField control={form.control} name="leadResponseSlaMinutes" label="Response time target (minutes)" inputMode="numeric" required description="Due time of the automatic “Respond to new lead” task" />
+          <CheckboxField control={form.control} name="autoLeadResponseTasks" label="Create a response task when a lead is assigned" className="self-center sm:mt-4" />
+        </fieldset>
         {editable ? (
           <div className="sm:col-span-2">
             <Button type="submit" loading={form.formState.isSubmitting}>

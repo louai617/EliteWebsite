@@ -1,13 +1,18 @@
 import { z } from "zod";
-import { Furnishing, ListingPurpose, PropertyStatus, PropertyType } from "@/generated/prisma/enums";
+import { Furnishing, ListingPurpose, PropertyCategory, PropertyStatus, PropertySubcategory, PropertyType } from "@/generated/prisma/enums";
+import { PROPERTY_CATEGORY_META, PROPERTY_TYPE_META, PROPERTY_TYPES_BY_CATEGORY, categoryForType } from "@/lib/constants";
 import { checkbox, id, money, optionalFloat, optionalId, optionalInt, optionalText, optionalUrl, requiredText } from "./common";
 
 const optionalEnum = <T extends Record<string, string>>(e: T) =>
   z.preprocess((v) => (v === "" || v === undefined ? null : v), z.enum(e).nullable());
 
-export const propertySchema = z.object({
+const propertyFields = z.object({
   title: requiredText(160, "Title"),
   type: z.enum(PropertyType, { error: "Choose a property type" }),
+  /** Residential / Commercial. Optional for API clients: derived from `type` when omitted. */
+  category: z.preprocess((v) => (v === "" ? undefined : v), z.enum(PropertyCategory, { error: "Choose residential or commercial" }).optional()),
+  /** Company / Private. */
+  subcategory: z.preprocess((v) => (v === "" || v === undefined ? "PRIVATE" : v), z.enum(PropertySubcategory, { error: "Choose company or private" })),
   purpose: z.enum(ListingPurpose, { error: "Choose rent or sale" }),
   status: z.enum(PropertyStatus),
   price: money("Price"),
@@ -55,10 +60,27 @@ export const propertySchema = z.object({
   agentId: optionalId,
 });
 
+/** The property type must belong to the chosen category (e.g. no commercial villas). */
+function refineCategory(value: { type: PropertyType; category?: PropertyCategory }, ctx: z.RefinementCtx) {
+  const category = value.category ?? categoryForType(value.type);
+  if (!PROPERTY_TYPES_BY_CATEGORY[category].includes(value.type)) {
+    ctx.addIssue({
+      code: "custom",
+      path: ["type"],
+      message: `${PROPERTY_TYPE_META[value.type].label} isn't a ${PROPERTY_CATEGORY_META[category].label.toLowerCase()} property type`,
+    });
+  }
+}
+
+export const propertySchema = propertyFields.superRefine(refineCategory);
+
 export type PropertyInput = z.input<typeof propertySchema>;
 export type PropertyValues = z.output<typeof propertySchema>;
 
-export const updatePropertySchema = propertySchema.extend({ id });
+export const updatePropertySchema = propertyFields.extend({ id }).superRefine(refineCategory);
+
+/** Partial update for the REST API (PATCH): only the given fields change. */
+export const patchPropertySchema = propertyFields.partial().extend({ id });
 
 export const propertyStatusSchema = z.object({ id, status: z.enum(PropertyStatus) });
 

@@ -2,6 +2,7 @@ import "server-only";
 import { db } from "@/lib/db";
 import { notFound } from "@/lib/errors";
 import { scope, type Actor } from "@/lib/permissions";
+import { STAFF_ROLES } from "@/lib/constants";
 
 export type RecordKind = "lead" | "client" | "owner" | "property" | "deal" | "viewing";
 
@@ -45,9 +46,9 @@ export async function assertRelated(actor: Actor, related: Partial<Record<Record
   );
 }
 
-/** The assignee must be an active staff member. */
+/** The assignee must be an active staff member (never a client-portal account). */
 export async function assertActiveUser(userId: string | null | undefined) {
   if (!userId) return;
-  const user = await db.user.findFirst({ where: { id: userId, isActive: true }, select: { id: true } });
+  const user = await db.user.findFirst({ where: { id: userId, isActive: true, role: { in: STAFF_ROLES } }, select: { id: true } });
   if (!user) throw notFound("Assigned user");
 }

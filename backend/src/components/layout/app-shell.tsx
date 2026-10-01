@@ -2,65 +2,107 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { Menu, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
+import { usePathname, useSearchParams } from "next/navigation";
+import { ChevronRight, Menu, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
 import type { SessionUser } from "@/lib/auth/session";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Logo } from "./logo";
-import { NAV, isActive } from "./nav";
+import { hasActiveDescendant, isActive, visibleNav, type NavItem } from "./nav";
 import { UserMenu } from "./user-menu";
 import { CommandMenu } from "./command-menu";
 import { QuickCreate } from "./quick-create";
 
 const STORAGE_KEY = "elite-crm:sidebar-collapsed";
 
+const linkClass = (active: boolean, collapsed: boolean, depth = 0) =>
+  cn(
+    "group relative flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
+    active && "bg-sidebar-accent text-sidebar-accent-foreground",
+    collapsed && "justify-center px-0",
+    depth > 0 && "h-7 font-normal",
+  );
+
+function NavLink({ item, active, collapsed, depth = 0, onNavigate, trailing }: { item: NavItem; active: boolean; collapsed: boolean; depth?: number; onNavigate?: () => void; trailing?: React.ReactNode }) {
+  const Icon = item.icon;
+  const link = (
+    <Link href={item.href} onClick={onNavigate} aria-current={active ? "page" : undefined} className={linkClass(active, collapsed, depth)} style={depth ? { paddingLeft: `${10 + depth * 14}px` } : undefined}>
+      {active && <span className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-r bg-gold" aria-hidden />}
+      {Icon ? (
+        <Icon className={cn("size-4 shrink-0", active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground")} />
+      ) : (
+        !collapsed && <span className={cn("size-1.5 shrink-0 rounded-full", active ? "bg-gold" : "bg-muted-foreground/40")} aria-hidden />
+      )}
+      {!collapsed && <span className="truncate">{item.label}</span>}
+      {!collapsed && trailing}
+    </Link>
+  );
+  return collapsed ? (
+    <Tooltip>
+      <TooltipTrigger asChild>{link}</TooltipTrigger>
+      <TooltipContent side="right">{item.label}</TooltipContent>
+    </Tooltip>
+  ) : (
+    link
+  );
+}
+
+/** A nav entry with nested children (Properties › Residential › Company, Tasks › My tasks …). */
+function NavTree({ item, depth, collapsed, onNavigate, pathname, search }: { item: NavItem; depth: number; collapsed: boolean; onNavigate?: () => void; pathname: string; search: URLSearchParams }) {
+  const childActive = hasActiveDescendant(item, pathname, search);
+  const [open, setOpen] = useState(childActive);
+  const expanded = open || childActive;
+
+  if (!item.children?.length) {
+    return <NavLink item={item} depth={depth} collapsed={collapsed} onNavigate={onNavigate} active={isActive(pathname, search, item.href, { exact: depth > 0 && !item.href.includes("?") })} />;
+  }
+  if (collapsed) {
+    return <NavLink item={item} collapsed active={childActive} onNavigate={onNavigate} />;
+  }
+  return (
+    <div className="flex flex-col gap-0.5">
+      <div className="relative">
+        <NavLink item={item} depth={depth} collapsed={false} onNavigate={onNavigate} active={depth > 0 && isActive(pathname, search, item.href)} />
+        <button
+          type="button"
+          onClick={() => setOpen(!expanded)}
+          className="absolute top-1 right-1 flex size-6 items-center justify-center rounded text-muted-foreground hover:bg-sidebar-border/60 hover:text-foreground"
+          aria-label={`${expanded ? "Collapse" : "Expand"} ${item.label}`}
+          aria-expanded={expanded}
+        >
+          <ChevronRight className={cn("size-3.5 transition-transform", expanded && "rotate-90")} />
+        </button>
+      </div>
+      {expanded && (
+        <div className="flex flex-col gap-0.5">
+          {item.children.map((child) => (
+            <NavTree key={child.href} item={child} depth={depth + 1} collapsed={false} onNavigate={onNavigate} pathname={pathname} search={search} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SidebarNav({ user, collapsed, onNavigate }: { user: SessionUser; collapsed: boolean; onNavigate?: () => void }) {
   const pathname = usePathname();
+  const searchParams = useSearchParams();
+  const search = new URLSearchParams(searchParams.toString());
   return (
     <nav className="flex flex-1 flex-col gap-4 overflow-y-auto px-2.5 py-3 scrollbar-thin" aria-label="Main">
-      {NAV.map((group, gi) => {
-        const items = group.items.filter((item) => !item.roles || item.roles.includes(user.role));
-        if (!items.length) return null;
-        return (
-          <div key={group.label ?? gi} className="flex flex-col gap-0.5">
-            {group.label && !collapsed && (
-              <p className="px-2.5 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground/80 uppercase">{group.label}</p>
-            )}
-            {group.label && collapsed && <div className="mx-2 mb-1 h-px bg-sidebar-border" />}
-            {items.map((item) => {
-              const active = isActive(pathname, item.href);
-              const link = (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  onClick={onNavigate}
-                  aria-current={active ? "page" : undefined}
-                  className={cn(
-                    "group relative flex h-8 items-center gap-2.5 rounded-md px-2.5 text-[13px] font-medium text-sidebar-foreground/85 transition-colors hover:bg-sidebar-accent hover:text-sidebar-accent-foreground",
-                    active && "bg-sidebar-accent text-sidebar-accent-foreground",
-                    collapsed && "justify-center px-0",
-                  )}
-                >
-                  {active && <span className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-r bg-gold" aria-hidden />}
-                  <item.icon className={cn("size-4 shrink-0", active ? "text-foreground" : "text-muted-foreground group-hover:text-foreground")} />
-                  {!collapsed && <span className="truncate">{item.label}</span>}
-                </Link>
-              );
-              return collapsed ? (
-                <Tooltip key={item.href}>
-                  <TooltipTrigger asChild>{link}</TooltipTrigger>
-                  <TooltipContent side="right">{item.label}</TooltipContent>
-                </Tooltip>
-              ) : (
-                link
-              );
-            })}
-          </div>
-        );
-      })}
+      {visibleNav(user).map((group, gi) => (
+        <div key={group.label ?? gi} className="flex flex-col gap-0.5">
+          {group.label && !collapsed && (
+            <p className="px-2.5 pb-1 text-[11px] font-medium tracking-wide text-muted-foreground/80 uppercase">{group.label}</p>
+          )}
+          {group.label && collapsed && <div className="mx-2 mb-1 h-px bg-sidebar-border" />}
+          {group.items.map((item) => (
+            <NavTree key={item.href} item={item} depth={0} collapsed={collapsed} onNavigate={onNavigate} pathname={pathname} search={search} />
+          ))}
+        </div>
+      ))}
     </nav>
   );
 }

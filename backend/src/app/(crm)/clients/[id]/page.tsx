@@ -22,6 +22,7 @@ import { NotesPanel } from "@/components/shared/notes-panel";
 import { ActivityTimeline } from "@/components/shared/activity-timeline";
 import { AgentCell } from "@/components/shared/user-avatar";
 import { RecordActions } from "@/components/shared/record-actions";
+import { LogActivityButton } from "@/components/activities/log-activity";
 import { InterestList } from "@/components/shared/interest-list";
 import { DealMiniList, ViewingMiniList } from "@/components/shared/related-lists";
 import { ClientHeaderActions } from "@/components/clients/client-header-actions";
@@ -77,6 +78,7 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
               defaults: settings,
             }}
           />
+          <LogActivityButton viewer={viewer} agents={agents} label="Log follow-up" prefill={{ type: "CLIENT_FOLLOW_UP", clientId: client.id, clientOption }} />
         </div>
       </PageHeader>
 

@@ -14,6 +14,8 @@ import {
   PRIORITY_META,
   PROPERTY_STATUS_META,
   PROPERTY_TYPE_META,
+  PROPERTY_CATEGORY_META,
+  PROPERTY_SUBCATEGORY_META,
   PURPOSE_META,
   VIEWING_STATUS_META,
 } from "@/lib/constants";
@@ -36,6 +38,7 @@ import { NotesPanel } from "@/components/shared/notes-panel";
 import { ActivityTimeline } from "@/components/shared/activity-timeline";
 import { AgentCell } from "@/components/shared/user-avatar";
 import { RecordActions } from "@/components/shared/record-actions";
+import { PostingButton } from "@/components/properties/posting-button";
 import { DeleteRecordButton } from "@/components/shared/delete-record-button";
 import { PropertyGallery } from "@/components/properties/property-gallery";
 import { ImageManager } from "@/components/properties/image-manager";
@@ -94,6 +97,12 @@ export default async function PropertyPage({ params }: PageProps<"/properties/[i
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1">
             <EnumBadge meta={PROPERTY_STATUS_META} value={property.status} dot />
             <EnumBadge meta={PURPOSE_META} value={property.purpose} />
+            <Link href={`/properties?category=${property.category}`} className="hover:underline">
+              <EnumBadge meta={PROPERTY_CATEGORY_META} value={property.category} />
+            </Link>
+            <Link href={`/properties?category=${property.category}&subcategory=${property.subcategory}`} className="hover:underline">
+              <EnumBadge meta={PROPERTY_SUBCATEGORY_META} value={property.subcategory} />
+            </Link>
             <span className="font-mono text-xs">{property.reference}</span>
             <span className="flex items-center gap-1">
               <MapPin className="size-3.5" />
@@ -103,6 +112,7 @@ export default async function PropertyPage({ params }: PageProps<"/properties/[i
         }
         actions={
           <>
+            {property.canEdit && <PostingButton propertyId={property.id} posted={Boolean(property.lastPostedAt)} />}
             {property.canEdit && <PropertyStatusMenu id={property.id} status={property.status} />}
             {property.canEdit && (
               <Button variant="outline" asChild>
@@ -400,6 +410,7 @@ export default async function PropertyPage({ params }: PageProps<"/properties/[i
                   { label: "Coordinates", value: property.latitude != null && property.longitude != null ? `${property.latitude}, ${property.longitude}` : null },
                   { label: "Links", value: links.length ? links : null },
                   { label: "SEO title", value: property.seoTitle },
+                  { label: "Last posted", value: property.lastPostedAt ? formatDate(property.lastPostedAt) : null },
                   { label: "Listed", value: formatDate(property.createdAt) },
                 ]}
               />

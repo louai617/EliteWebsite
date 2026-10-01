@@ -26,6 +26,20 @@ enum Role {
   ADMIN
   MANAGER
   AGENT
+  /// Client-portal account. Linked to exactly one CRM `Client`; never has CRM access.
+  CLIENT
+}
+
+/// Top level of the property hierarchy (Residential / Commercial).
+enum PropertyCategory {
+  RESIDENTIAL
+  COMMERCIAL
+}
+
+/// Second level: who owns / lists the property.
+enum PropertySubcategory {
+  COMPANY
+  PRIVATE
 }
 
 enum PropertyType {
@@ -129,6 +143,79 @@ enum TaskStatus {
   CANCELLED
 }
 
+/// What real-estate operation a task is about. Drives automations and daily reporting.
+enum TaskType {
+  GENERAL
+  PROPERTY_POSTING
+  PROPERTY_REPOST
+  NEW_LISTING
+  CALL
+  LEAD_RESPONSE
+  LEAD_FOLLOW_UP
+  LEAD_QUALIFICATION
+  VIEWING
+  CLIENT_FOLLOW_UP
+}
+
+enum TaskEventType {
+  CREATED
+  ASSIGNED
+  REASSIGNED
+  STATUS_CHANGED
+  PRIORITY_CHANGED
+  DUE_DATE_CHANGED
+  UPDATED
+  NOTE
+}
+
+/// Operational work an agent performs; counted in daily reports and scoring.
+enum WorkActivityType {
+  CALL
+  LEAD_RESPONSE
+  FOLLOW_UP
+  CLIENT_FOLLOW_UP
+  LEAD_QUALIFICATION
+  PROPERTY_POST
+  PROPERTY_REPOST
+  NEW_LISTING
+  VIEWING
+  CONVERSION
+  OTHER
+}
+
+enum WorkActivitySource {
+  MANUAL
+  TASK
+  SYSTEM
+}
+
+enum DailyReportStatus {
+  /// The current business day — counters are live.
+  OPEN
+  /// Day is over; counters and score are frozen and never recomputed.
+  FINALIZED
+}
+
+enum ExternalSource {
+  PROPERTY_FINDER
+  QATAR_LIVING
+}
+
+enum ImportRunStatus {
+  RUNNING
+  COMPLETED
+  COMPLETED_WITH_ERRORS
+  FAILED
+}
+
+enum ImportRecordStatus {
+  CREATED
+  UPDATED
+  UNCHANGED
+  SKIPPED
+  FAILED
+}
+
 enum EntityType {
   LEAD
   CLIENT
@@ -152,6 +239,8 @@ enum ActivityAction {
   CONVERTED
   NOTE_ADDED
   IMAGE_ADDED
+  /// An agent recorded operational work (call, posting, follow-up…).
+  WORK_LOGGED
 }
 
 // ───────────────────────────── Users & auth ─────────────────────────────
@@ -166,6 +255,9 @@ model User {
   avatarUrl    String?
   isActive     Boolean   @default(true)
   lastLoginAt  DateTime?
+  /// CLIENT accounts only: the CRM client record this login belongs to.
+  clientId     String?   @unique
+  client       Client?   @relation("ClientPortalUser", fields: [clientId], references: [id], onDelete: SetNull)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 
@@ -177,6 +269,13 @@ model User {
   deals           Deal[]      @relation("DealAgent")
   assignedTasks   Task[]      @relation("TaskAssignee")
   createdTasks    Task[]      @relation("TaskCreator")
+  assignerTasks   Task[]      @relation("TaskAssigner")
+  taskEvents      TaskEvent[]
+  workActivities  AgentActivity[] @relation("ActivityAgent")
+  loggedActivities AgentActivity[] @relation("ActivityLogger")
+  dailyReports    DailyReport[]
+  dailyTemplates  DailyTaskTemplate[] @relation("TemplateAssignee")
+  importRuns      ImportRun[]
   createdOwners   Owner[]     @relation("OwnerCreator")
   notes           Note[]
   activities      Activity[]
@@ -231,6 +330,10 @@ model Property {
   reference String         @unique
   title     String
   type      PropertyType
+  /// Residential / Commercial (validated against `type` in the service layer).
+  category    PropertyCategory    @default(RESIDENTIAL)
+  /// Company-owned or privately-owned listing.
+  subcategory PropertySubcategory @default(PRIVATE)
   purpose   ListingPurpose
   status    PropertyStatus @default(AVAILABLE)
   price     Int
@@ -274,6 +377,8 @@ model Property {
   propertyFinderUrl String?
   externalUrl       String?
   isFeatured        Boolean @default(false)
+  /// Last time the listing was posted/reposted on a portal (set by posting activities).
+  lastPostedAt      DateTime?
   seoTitle          String?
   seoDescription    String?
 
@@ -291,8 +396,11 @@ model Property {
   tasks      Task[]
   notes      Note[]
   activities Activity[]
+  workActivities AgentActivity[]
+  externalListings ExternalListing[]
 
   @@index([status])
+  @@index([category, subcategory, status])
   @@index([purpose, status])
   @@index([type])
   @@index([area])
@@ -370,6 +478,7 @@ model Lead {
   tasks       Task[]
   noteEntries Note[]
   activities  Activity[]
+  workActivities AgentActivity[]
 
   @@index([status])
   @@index([source])
@@ -409,6 +518,9 @@ model Client {
   tasks       Task[]
   noteEntries Note[]
   activities  Activity[]
+  workActivities AgentActivity[]
+  /// Client-portal login, if one has been granted.
+  portalUser  User?   @relation("ClientPortalUser")
 
   @@index([fullName])
   @@index([phone])
@@ -438,6 +550,8 @@ model Viewing {
 
   noteEntries Note[]
   activities  Activity[]
+  tasks       Task[]
+  workActivities AgentActivity[]
 
   @@index([startsAt])
   @@index([agentId, startsAt])
@@ -483,6 +597,7 @@ model Deal {
   tasks       Task[]
   noteEntries Note[]
   activities  Activity[]
+  workActivities AgentActivity[]
 
   @@index([status])
   @@index([type])
@@ -497,15 +612,34 @@ model Task {
   id          String     @id @default(cuid())
   title       String
   description String?
+  type        TaskType   @default(GENERAL)
   status      TaskStatus @default(TODO)
   priority    Priority   @default(MEDIUM)
   dueDate     DateTime?
+  startedAt   DateTime?
   completedAt DateTime?
+  /// Shown to the client in the client portal ("next steps").
+  clientVisible Boolean  @default(false)
+
+  // Daily operational tasks (generated from a template for one business day).
+  /// Business date (YYYY-MM-DD, business time zone) the daily task belongs to.
+  dailyDate   String?
+  templateId  String?
+  template    DailyTaskTemplate? @relation(fields: [templateId], references: [id], onDelete: SetNull)
+  /// Target count for counter-style daily tasks (e.g. 20 calls); progress comes from AgentActivity.
+  targetCount Int?
+  /// Idempotency key for system-generated tasks (daily:…, lead-response:…).
+  autoKey     String?   @unique
 
   assigneeId  String?
   assignee    User?     @relation("TaskAssignee", fields: [assigneeId], references: [id], onDelete: SetNull)
   createdById String?
   createdBy   User?     @relation("TaskCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  /// Who (last) assigned the task to the current assignee.
+  assignedById String?
+  assignedBy   User?    @relation("TaskAssigner", fields: [assignedById], references: [id], onDelete: SetNull)
+  viewingId   String?
+  viewing     Viewing?  @relation(fields: [viewingId], references: [id], onDelete: SetNull)
   leadId      String?
   lead        Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
   clientId    String?
@@ -518,10 +652,15 @@ model Task {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  activities Activity[]
+  activities     Activity[]
+  events         TaskEvent[]
+  workActivities AgentActivity[]
 
   @@index([assigneeId, status])
+  @@index([assigneeId, dailyDate])
   @@index([status, dueDate])
+  @@index([type])
+  @@index([viewingId])
   @@index([leadId])
   @@index([clientId])
   @@index([propertyId])
@@ -618,6 +757,10 @@ model Settings {
   rentalCommissionPercent Float    @default(8.33)
   /// Share of the commission paid to the agent; the rest is the company's.
   agentSharePercent       Float    @default(40)
+  /// Response-time target for new leads; used for the auto-generated response task's due time.
+  leadResponseSlaMinutes  Int      @default(60)
+  /// Create a "respond to lead" task automatically when a lead is created or (re)assigned.
+  autoLeadResponseTasks   Boolean  @default(true)
   updatedAt               DateTime @updatedAt
 }
 
@@ -625,4 +768,220 @@ model Settings {
 model Counter {
   name  String @id
   value Int
+}
+
+// ───────────────────────────── Task history ─────────────────────────────
+
+/// Immutable history of a task: creation, (re)assignment, status/priority/due changes, notes.
+model TaskEvent {
+  id        String        @id @default(cuid())
+  taskId    String
+  task      Task          @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  actorId   String?
+  actor     User?         @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  type      TaskEventType
+  fromValue String?
+  toValue   String?
+  message   String?
+  createdAt DateTime      @default(now())
+
+  @@index([taskId, createdAt])
+}
+
+// ───────────────────────────── Daily operations ─────────────────────────────
+
+/// A recurring daily task. The scheduler creates one Task per active agent (or the chosen
+/// agent) at the start of each business day. Counter templates (targetCount > 1) are
+/// completed automatically when the agent records enough matching activities.
+model DailyTaskTemplate {
+  id           String            @id @default(cuid())
+  title        String
+  description  String?
+  taskType     TaskType          @default(GENERAL)
+  /// Activity type that counts towards the target (null = completed manually).
+  activityType WorkActivityType?
+  targetCount  Int               @default(1)
+  priority     Priority          @default(MEDIUM)
+  /// Local due time (business time zone), hour 0–23.
+  dueHour      Int               @default(18)
+  isActive     Boolean           @default(true)
+  /// null = every active agent; otherwise only this user.
+  assigneeId   String?
+  assignee     User?             @relation("TemplateAssignee", fields: [assigneeId], references: [id], onDelete: Cascade)
+  sortOrder    Int               @default(0)
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  tasks Task[]
+
+  @@index([isActive])
+}
+
+/// Operational work performed by an agent (call made, lead answered, property posted…).
+/// Append-only: this is the source of truth for daily reports and performance scores.
+model AgentActivity {
+  id           String             @id @default(cuid())
+  type         WorkActivityType
+  source       WorkActivitySource @default(MANUAL)
+  agentId      String
+  agent        User               @relation("ActivityAgent", fields: [agentId], references: [id], onDelete: Restrict)
+  /// Who recorded it (the agent, a manager on their behalf, or null for the system).
+  loggedById   String?
+  loggedBy     User?              @relation("ActivityLogger", fields: [loggedById], references: [id], onDelete: SetNull)
+  occurredAt   DateTime           @default(now())
+  /// Business date (YYYY-MM-DD in the business time zone) the activity counts towards.
+  businessDate String
+  outcome      String?
+  notes        String?
+  durationMin  Int?
+  /// Idempotency key for system-recorded activities (e.g. viewing-completed:<id>).
+  dedupeKey    String?            @unique
+
+  taskId     String?
+  task       Task?     @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  leadId     String?
+  lead       Lead?     @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  clientId   String?
+  client     Client?   @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  propertyId String?
+  property   Property? @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  viewingId  String?
+  viewing    Viewing?  @relation(fields: [viewingId], references: [id], onDelete: SetNull)
+  dealId     String?
+  deal       Deal?     @relation(fields: [dealId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+
+  @@index([agentId, businessDate])
+  @@index([businessDate, type])
+  @@index([leadId])
+  @@index([propertyId])
+}
+
+/// One row per agent per business day. While the day is OPEN the counters are refreshed
+/// from live data; at rollover they are frozen (FINALIZED) together with the score, so
+/// historical reports never change even if the underlying records are edited later.
+model DailyReport {
+  id                     String            @id @default(cuid())
+  agentId                String
+  agent                  User              @relation(fields: [agentId], references: [id], onDelete: Restrict)
+  /// Business date, YYYY-MM-DD.
+  date                   String
+  status                 DailyReportStatus @default(OPEN)
+
+  callsMade              Int    @default(0)
+  leadsReceived          Int    @default(0)
+  leadsAnswered          Int    @default(0)
+  leadsConverted         Int    @default(0)
+  propertiesPosted       Int    @default(0)
+  propertiesReposted     Int    @default(0)
+  newListings            Int    @default(0)
+  viewingsCompleted      Int    @default(0)
+  followUpsCompleted     Int    @default(0)
+  qualificationsDone     Int    @default(0)
+  tasksCompleted         Int    @default(0)
+  tasksOutstanding       Int    @default(0)
+  tasksOverdue           Int    @default(0)
+  dailyTasksAssigned     Int    @default(0)
+  dailyTasksCompleted    Int    @default(0)
+  avgLeadResponseMinutes Float?
+  avgTaskCompletionHours Float?
+
+  score                  Float?
+  /// JSON breakdown of the score (metric, value, points) — the explanation shown in the UI.
+  scoreBreakdown         String?
+
+  /// End-of-day report written by the agent.
+  summary                String?
+  blockers               String?
+  submittedAt            DateTime?
+  finalizedAt            DateTime?
+  createdAt              DateTime  @default(now())
+  updatedAt              DateTime  @updatedAt
+
+  @@unique([agentId, date])
+  @@index([date])
+}
+
+/// Configurable scoring weights. Metrics are defined in code (src/lib/scoring.ts); a row
+/// overrides the default points / enabled flag for one metric.
+model ScoringRule {
+  metric      String   @id
+  points      Float
+  isEnabled   Boolean  @default(true)
+  updatedById String?
+  updatedAt   DateTime @updatedAt
+}
+
+/// Runs of scheduled/system jobs, keyed so each job runs once (e.g. daily-rollover:2026-10-01).
+model SystemJob {
+  key        String    @id
+  status     String
+  details    String?
+  error      String?
+  startedAt  DateTime  @default(now())
+  finishedAt DateTime?
+}
+
+// ───────────────────────────── External listings / imports ─────────────────────────────
+
+/// Link between a listing on an external portal and the CRM property it was imported into.
+/// (source, externalId) is the primary de-duplication key.
+model ExternalListing {
+  id              String         @id @default(cuid())
+  source          ExternalSource
+  externalId      String
+  propertyId      String?
+  property        Property?      @relation(fields: [propertyId], references: [id], onDelete: SetNull)
+  sourceUrl       String?
+  /// Hash of the normalized record — unchanged records are skipped on re-import.
+  checksum        String
+  /// Normalized record (JSON) and the raw payload (JSON, truncated) for auditing.
+  normalized      String
+  rawPayload      String?
+  firstImportedAt DateTime       @default(now())
+  lastImportedAt  DateTime       @default(now())
+  lastRunId       String?
+
+  @@unique([source, externalId])
+  @@index([propertyId])
+}
+
+/// One import/migration run (an upload, an API call or a remote fetch).
+model ImportRun {
+  id          String          @id @default(cuid())
+  source      ExternalSource
+  status      ImportRunStatus @default(RUNNING)
+  trigger     String
+  dryRun      Boolean         @default(false)
+  total       Int             @default(0)
+  created     Int             @default(0)
+  updated     Int             @default(0)
+  unchanged   Int             @default(0)
+  skipped     Int             @default(0)
+  failed      Int             @default(0)
+  error       String?
+  startedById String?
+  startedBy   User?           @relation(fields: [startedById], references: [id], onDelete: SetNull)
+  startedAt   DateTime        @default(now())
+  finishedAt  DateTime?
+
+  records ImportRecord[]
+
+  @@index([source, startedAt])
+}
+
+/// Per-record result of an import run (success or the reason it failed).
+model ImportRecord {
+  id         String             @id @default(cuid())
+  runId      String
+  run        ImportRun          @relation(fields: [runId], references: [id], onDelete: Cascade)
+  position   Int
+  externalId String?
+  status     ImportRecordStatus
+  message    String?
+  propertyId String?
+  createdAt  DateTime           @default(now())
+
+  @@index([runId, status])
 }

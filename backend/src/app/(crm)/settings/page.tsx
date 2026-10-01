@@ -42,7 +42,7 @@ export default async function SettingsPage() {
         <Card>
           <CardHeader className="flex-col">
             <CardTitle>Company &amp; commission</CardTitle>
-            <CardDescription>Defaults used when calculating deal commission.</CardDescription>
+            <CardDescription>Defaults used for deal commission and lead response tasks.</CardDescription>
           </CardHeader>
           <CardContent>
             <CompanySettingsForm
@@ -53,6 +53,8 @@ export default async function SettingsPage() {
                 saleCommissionPercent: settings.saleCommissionPercent,
                 rentalCommissionPercent: settings.rentalCommissionPercent,
                 agentSharePercent: settings.agentSharePercent,
+                leadResponseSlaMinutes: settings.leadResponseSlaMinutes,
+                autoLeadResponseTasks: settings.autoLeadResponseTasks,
               }}
             />
           </CardContent>

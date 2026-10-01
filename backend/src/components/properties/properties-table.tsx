@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { Building2, Star } from "lucide-react";
 import type { PropertyListItem } from "@/services/properties";
-import { FURNISHING_META, PROPERTY_STATUS_META, PROPERTY_TYPE_META, PURPOSE_META } from "@/lib/constants";
+import { FURNISHING_META, PROPERTY_CATEGORY_META, PROPERTY_STATUS_META, PROPERTY_SUBCATEGORY_META, PROPERTY_TYPE_META, PURPOSE_META } from "@/lib/constants";
 import { formatDate, formatMoney, formatNumber } from "@/lib/format";
 import type { Viewer } from "@/types/options";
 import { DataTable, type Column } from "@/components/shared/data-table/data-table";
@@ -35,6 +35,16 @@ export function PropertiesTable({ rows, viewer, filtered }: { rows: PropertyList
       ),
     },
     { id: "status", header: "Status", cell: (p) => <EnumBadge meta={PROPERTY_STATUS_META} value={p.status} dot /> },
+    {
+      id: "class",
+      header: "Category",
+      cell: (p) => (
+        <span className="flex flex-col gap-0.5 text-[13px] leading-tight whitespace-nowrap">
+          <span>{PROPERTY_CATEGORY_META[p.category].label}</span>
+          <span className="text-xs text-muted-foreground">{PROPERTY_SUBCATEGORY_META[p.subcategory].label}</span>
+        </span>
+      ),
+    },
     { id: "purpose", header: "Purpose", cell: (p) => <EnumBadge meta={PURPOSE_META} value={p.purpose} /> },
     { id: "type", header: "Type", cell: (p) => <span className="text-[13px]">{PROPERTY_TYPE_META[p.type].label}</span> },
     {
@@ -115,6 +125,9 @@ export function PropertyGrid({ rows, filtered }: { rows: PropertyListItem[]; fil
             <p className="line-clamp-1 text-sm font-medium group-hover:underline">{p.title}</p>
             <p className="text-xs text-muted-foreground">
               {p.reference} · {p.area} · {PROPERTY_TYPE_META[p.type].label}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {PROPERTY_CATEGORY_META[p.category].label} · {PROPERTY_SUBCATEGORY_META[p.subcategory].label}
             </p>
             <p className="text-xs text-muted-foreground">
               {[p.bedrooms === 0 ? "Studio" : p.bedrooms ? `${p.bedrooms} bd` : null, p.bathrooms ? `${p.bathrooms} ba` : null, p.areaSqm ? `${formatNumber(p.areaSqm)} sqm` : null]

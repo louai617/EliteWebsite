@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ArrowRightLeft, CheckCircle2, CirclePlus, Flag, ImagePlus, MessageSquare, Pencil, Trash2, UserPlus, XCircle, type LucideIcon } from "lucide-react";
+import { ArrowRightLeft, CheckCircle2, CirclePlus, Flag, ImagePlus, MessageSquare, Pencil, PhoneCall, Trash2, UserPlus, XCircle, type LucideIcon } from "lucide-react";
 import type { ActivityAction, EntityType } from "@/generated/prisma/enums";
 import { RelativeTime } from "./relative-time";
 import { cn } from "@/lib/utils";
@@ -28,6 +28,7 @@ const ICON: Record<ActivityAction, { icon: LucideIcon; className: string }> = {
   CONVERTED: { icon: ArrowRightLeft, className: "text-emerald-600 bg-emerald-50" },
   NOTE_ADDED: { icon: MessageSquare, className: "text-slate-600 bg-slate-100" },
   IMAGE_ADDED: { icon: ImagePlus, className: "text-sky-600 bg-sky-50" },
+  WORK_LOGGED: { icon: PhoneCall, className: "text-teal-700 bg-teal-50" },
 };
 
 const HREF: Partial<Record<EntityType, string>> = {

@@ -1,18 +1,21 @@
 import type { Metadata } from "next";
-import { Priority, TaskStatus } from "@/generated/prisma/enums";
+import { Priority, TaskStatus, TaskType } from "@/generated/prisma/enums";
 import { requireUser } from "@/lib/auth/session";
 import { enumParam, listParams, param } from "@/lib/list-params";
 import { toViewer } from "@/lib/viewer";
 import { TASK_SORTS, countTasks, listTasks, type TaskFilters } from "@/services/tasks";
+import { dailyProgress } from "@/services/work-activities";
 import { listAssignableUsers } from "@/services/users";
 import { Card } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
 import { Pagination } from "@/components/shared/data-table/pagination";
 import { TaskList } from "@/components/tasks/task-list";
 import { TasksToolbar } from "@/components/tasks/tasks-toolbar";
+import { TasksNav } from "@/components/tasks/tasks-nav";
 import { CreateTaskButton } from "@/components/tasks/create-task-button";
+import { LogActivityButton } from "@/components/activities/log-activity";
 
-export const metadata: Metadata = { title: "Tasks" };
+export const metadata: Metadata = { title: "My tasks" };
 
 function tabFilters(tab: string | undefined): TaskFilters {
   switch (tab) {
@@ -31,16 +34,14 @@ function tabFilters(tab: string | undefined): TaskFilters {
   }
 }
 
-export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
+/** My tasks: everything assigned to the signed-in user, including today's daily tasks. */
+export default async function MyTasksPage({ searchParams }: PageProps<"/tasks">) {
   const user = await requireUser();
   const sp = await searchParams;
   const tab = param(sp, "tab");
   const params = listParams(sp, TASK_SORTS, { sort: tab === "done" ? "updatedAt" : "dueDate", dir: tab === "done" ? "desc" : "asc" });
   const viewer = toViewer(user);
-  const shared: TaskFilters = {
-    priority: enumParam(sp, "priority", Priority),
-    assigneeId: param(sp, "assignee"),
-  };
+  const shared: TaskFilters = { mine: true, priority: enumParam(sp, "priority", Priority), type: enumParam(sp, "type", TaskType) };
   const filters: TaskFilters = { ...tabFilters(tab), ...shared, ...(tab === "all" ? { status: enumParam(sp, "status", TaskStatus) } : {}) };
   const count = (f: TaskFilters) => countTasks(user, params.q, { ...f, ...shared });
 
@@ -52,16 +53,29 @@ export default async function TasksPage({ searchParams }: PageProps<"/tasks">) {
     count({ due: "today", open: true }),
     count({ due: "week", open: true }),
   ]);
+  const progress = Object.fromEntries(await dailyProgress(result.items));
 
   return (
     <>
-      <PageHeader title="Tasks" description={viewer.isManager ? "Follow-ups across the team" : "Your follow-ups and to-dos"} actions={<CreateTaskButton agents={agents} viewer={viewer} openFromUrl />} />
+      <PageHeader
+        title="My tasks"
+        description="Everything assigned to you — follow-ups, daily tasks and work assigned by your manager"
+        actions={
+          <>
+            <LogActivityButton viewer={viewer} agents={agents} openFromUrl />
+            <CreateTaskButton agents={agents} viewer={viewer} openFromUrl />
+          </>
+        }
+      >
+        <TasksNav viewer={viewer} />
+      </PageHeader>
       <TasksToolbar agents={agents} viewer={viewer} counts={{ "": open, overdue, today, week }} />
       <Card className="overflow-hidden">
         <TaskList
           tasks={result.items}
           agents={agents}
           viewer={viewer}
+          progress={progress}
           emptyTitle={tab === "overdue" ? "Nothing overdue" : tab === "done" ? "No completed tasks yet" : "No tasks here"}
           emptyDescription={tab === "overdue" ? "You're all caught up." : undefined}
         />

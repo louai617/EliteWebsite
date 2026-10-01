@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -8,8 +9,11 @@ import { useFormAction } from "@/hooks/use-action";
 import {
   AMENITIES,
   FURNISHING_META,
+  PROPERTY_CATEGORY_META,
   PROPERTY_STATUS_META,
+  PROPERTY_SUBCATEGORY_META,
   PROPERTY_TYPE_META,
+  PROPERTY_TYPES_BY_CATEGORY,
   PURPOSE_META,
   QATAR_AREAS,
   options,
@@ -26,6 +30,8 @@ export type PropertyFormDefaults = Partial<Record<keyof PropertyInput, unknown>>
 
 const EMPTY: PropertyInput = {
   title: "",
+  category: "RESIDENTIAL",
+  subcategory: "PRIVATE",
   type: "APARTMENT",
   purpose: "RENT",
   status: "AVAILABLE",
@@ -103,6 +109,15 @@ export function PropertyForm({
     mode: "onTouched",
   });
   const purpose = useWatch({ control: form.control, name: "purpose" });
+  const category = (useWatch({ control: form.control, name: "category" }) as keyof typeof PROPERTY_TYPES_BY_CATEGORY | undefined) ?? "RESIDENTIAL";
+  const allowedTypes = PROPERTY_TYPES_BY_CATEGORY[category];
+  const typeOptions = options(PROPERTY_TYPE_META).filter((o) => allowedTypes.includes(o.value));
+
+  // Keep the type consistent with the category (e.g. switching to Commercial drops "Villa").
+  useEffect(() => {
+    const current = form.getValues("type");
+    if (!allowedTypes.includes(current)) form.setValue("type", allowedTypes[0], { shouldDirty: true });
+  }, [allowedTypes, form]);
   const areaOptions = Array.from(new Set([...QATAR_AREAS, ...areas])).sort();
 
   const onSubmit = useFormAction(
@@ -122,7 +137,9 @@ export function PropertyForm({
         <div className="space-y-6 rounded-lg border bg-card p-5 sm:p-6">
           <FormSection title="Listing" description="What it is and how it is offered.">
             <TextField control={form.control} name="title" label="Title" required placeholder="Sea-view 2BR apartment in Porto Arabia" className="sm:col-span-2" />
-            <SelectField control={form.control} name="type" label="Property type" required options={options(PROPERTY_TYPE_META)} />
+            <SelectField control={form.control} name="category" label="Category" required options={options(PROPERTY_CATEGORY_META)} />
+            <SelectField control={form.control} name="subcategory" label="Listed by" required options={options(PROPERTY_SUBCATEGORY_META)} description="Company-owned or a private owner" />
+            <SelectField control={form.control} name="type" label="Property type" required options={typeOptions} />
             <SelectField control={form.control} name="purpose" label="Purpose" required options={options(PURPOSE_META)} />
             <SelectField control={form.control} name="status" label="Status" required options={options(PROPERTY_STATUS_META)} />
             <div className="grid grid-cols-[1fr_88px] gap-2">

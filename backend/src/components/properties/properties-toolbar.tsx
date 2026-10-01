@@ -2,12 +2,12 @@
 
 import { LayoutGrid, Rows3 } from "lucide-react";
 import { useUrlState } from "@/hooks/use-url-state";
-import { FURNISHING_META, PROPERTY_STATUS_META, PROPERTY_TYPE_META, PURPOSE_META, options } from "@/lib/constants";
+import { FURNISHING_META, PROPERTY_CATEGORY_META, PROPERTY_STATUS_META, PROPERTY_SUBCATEGORY_META, PROPERTY_TYPE_META, PURPOSE_META, options } from "@/lib/constants";
 import type { AgentOption, Viewer } from "@/types/options";
 import { cn } from "@/lib/utils";
 import { ClearFilters, FilterSelect, RangeFilter, SearchInput, Toolbar } from "@/components/shared/data-table/toolbar";
 
-const FILTER_KEYS = ["q", "status", "purpose", "type", "area", "priceMin", "priceMax", "beds", "furnishing", "agent", "featured"];
+const FILTER_KEYS = ["q", "category", "subcategory", "status", "purpose", "type", "area", "priceMin", "priceMax", "beds", "furnishing", "agent", "featured"];
 
 export function PropertiesToolbar({ areas, agents, viewer }: { areas: string[]; agents: AgentOption[]; viewer: Viewer }) {
   const url = useUrlState();
@@ -15,6 +15,8 @@ export function PropertiesToolbar({ areas, agents, viewer }: { areas: string[]; 
   return (
     <Toolbar>
       <SearchInput placeholder="Search title, ref, building…" />
+      <FilterSelect param="category" label="Category" options={options(PROPERTY_CATEGORY_META)} />
+      <FilterSelect param="subcategory" label="Listed by" options={options(PROPERTY_SUBCATEGORY_META)} />
       <FilterSelect param="status" label="Status" options={options(PROPERTY_STATUS_META)} />
       <FilterSelect param="purpose" label="Purpose" options={options(PURPOSE_META)} />
       <FilterSelect param="type" label="Type" options={options(PROPERTY_TYPE_META)} />

@@ -4,12 +4,13 @@ import type { Prisma } from "@/generated/prisma/client";
 import type { CustomerType, LeadSource, LeadStatus, ListingPurpose, Priority } from "@/generated/prisma/enums";
 import { db } from "@/lib/db";
 import { forbidden, notFound } from "@/lib/errors";
-import { can, canAssignTo, isManager, scope, type Actor } from "@/lib/permissions";
+import { can, canAssignTo, isManager, isStaff, scope, type Actor } from "@/lib/permissions";
 import { LEAD_PIPELINE, LEAD_SOURCE_META, LEAD_STATUS_META } from "@/lib/constants";
 import { paginate, skipTake, type ListParams } from "@/lib/list-params";
 import { digitsOnly, like } from "@/lib/search";
 import type { leadSchema, updateLeadSchema } from "@/schemas/lead";
 import { logActivity } from "./activity";
+import { onLeadAssigned, onLeadStatusChanged } from "./automation";
 import { assertActiveUser, assertCanAccess } from "./access";
 import type { Tx } from "./types";
 
@@ -161,8 +162,10 @@ export async function createLead(actor: Actor, input: z.output<typeof leadSchema
         agentId,
         interests: interestedPropertyId ? { create: [{ propertyId: interestedPropertyId }] } : undefined,
       },
-      select: { id: true, fullName: true, source: true, agentId: true },
+      select: { id: true, fullName: true, source: true, agentId: true, status: true, clientId: true },
     });
+    await onLeadAssigned(tx, lead, actor.id);
+    if (lead.status !== "NEW") await onLeadStatusChanged(tx, lead, "NEW", lead.status, { id: actor.id, staff: isStaff(actor) });
     await logActivity(tx, {
       action: "CREATED", entityType: "LEAD", entityId: lead.id, entityLabel: lead.fullName,
       description: `New ${LEAD_SOURCE_META[lead.source].label} lead ${lead.fullName}`, userId: actor.id,
@@ -195,8 +198,10 @@ export async function updateLead(actor: Actor, input: z.output<typeof updateLead
     const lead = await tx.lead.update({
       where: { id },
       data: { ...data, ...(statusChanged ? { statusChangedAt: new Date() } : {}) },
-      select: { id: true, fullName: true, status: true, agentId: true },
+      select: { id: true, fullName: true, status: true, agentId: true, clientId: true },
     });
+    if (statusChanged) await onLeadStatusChanged(tx, lead, current.status, lead.status, { id: actor.id, staff: isStaff(actor) });
+    if (current.agentId !== lead.agentId) await onLeadAssigned(tx, lead, actor.id);
     if (interestedPropertyId) {
       await tx.propertyInterest.upsert({
         where: { propertyId_leadId: { propertyId: interestedPropertyId, leadId: id } },
@@ -228,6 +233,7 @@ export async function setLeadStatus(actor: Actor, id: string, status: LeadStatus
   if (current.status === status) return current;
   return db.$transaction(async (tx) => {
     const lead = await tx.lead.update({ where: { id }, data: { status, statusChangedAt: new Date() }, select: { id: true, fullName: true, status: true, agentId: true, clientId: true } });
+    await onLeadStatusChanged(tx, lead, current.status, status, { id: actor.id, staff: isStaff(actor) });
     await logActivity(tx, {
       action: "STATUS_CHANGED", entityType: "LEAD", entityId: id, entityLabel: lead.fullName, userId: actor.id, leadId: id, clientId: lead.clientId,
       description: `Moved ${lead.fullName} from ${LEAD_STATUS_META[current.status].label} to ${LEAD_STATUS_META[status].label}`,
@@ -243,7 +249,8 @@ export async function assignLead(actor: Actor, id: string, agentId: string | nul
   await assertActiveUser(agentId);
   if (current.agentId === agentId) return current;
   return db.$transaction(async (tx) => {
-    const lead = await tx.lead.update({ where: { id }, data: { agentId }, select: { id: true, fullName: true, agentId: true } });
+    const lead = await tx.lead.update({ where: { id }, data: { agentId }, select: { id: true, fullName: true, agentId: true, status: true } });
+    await onLeadAssigned(tx, lead, actor.id);
     const name = await agentName(tx, agentId);
     await logActivity(tx, {
       action: "ASSIGNED", entityType: "LEAD", entityId: id, entityLabel: lead.fullName, userId: actor.id, leadId: id,

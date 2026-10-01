@@ -26,6 +26,7 @@ import { InterestList } from "@/components/shared/interest-list";
 import { DealMiniList, ViewingMiniList } from "@/components/shared/related-lists";
 import { LeadHeaderActions } from "@/components/leads/lead-header-actions";
 import { TaskList } from "@/components/tasks/task-list";
+import { LogActivityButton } from "@/components/activities/log-activity";
 
 export const metadata: Metadata = { title: "Lead" };
 
@@ -92,6 +93,12 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
               amount: firstProperty ? (firstProperty.purpose === "SALE" ? firstProperty.price : firstProperty.price * 12) : undefined,
               defaults: settings,
             }}
+          />
+          <LogActivityButton
+            viewer={viewer}
+            agents={agents}
+            label={lead.status === "NEW" ? "Log first response" : "Log call / follow-up"}
+            prefill={{ type: lead.status === "NEW" ? "LEAD_RESPONSE" : "FOLLOW_UP", leadId: lead.id, leadOption, clientId: lead.clientId ?? undefined, clientOption }}
           />
         </div>
       </PageHeader>

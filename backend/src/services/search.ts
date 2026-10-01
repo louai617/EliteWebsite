@@ -1,7 +1,9 @@
 import "server-only";
 import { db } from "@/lib/db";
 import { can, scope, type Actor } from "@/lib/permissions";
-import { CUSTOMER_TYPE_META, DEAL_STATUS_META, LEAD_STATUS_META, PROPERTY_STATUS_META, ROLE_META } from "@/lib/constants";
+import { CUSTOMER_TYPE_META, DEAL_STATUS_META, LEAD_STATUS_META, PROPERTY_CATEGORY_META, PROPERTY_STATUS_META, PROPERTY_SUBCATEGORY_META, ROLE_META, propertyClassLabel } from "@/lib/constants";
+import type { Prisma } from "@/generated/prisma/client";
+import type { PropertyCategory, PropertySubcategory } from "@/generated/prisma/enums";
 import { formatMoneyCompact } from "@/lib/format";
 import { digitsOnly, like } from "@/lib/search";
 import type { LookupOption, SearchGroup } from "@/types/search";
@@ -51,11 +53,13 @@ export async function globalSearch(actor: Actor, raw: string, perGroup = 5): Pro
               { buildingName: like(q) },
               { tower: like(q) },
               { owner: { fullName: like(q) } },
+              // "commercial", "residential", "company", "private" find the matching hierarchy section.
+              ...hierarchyMatches(q),
             ],
           },
         ],
       },
-      select: { id: true, reference: true, title: true, area: true, status: true, price: true, currency: true, owner: { select: { fullName: true } } },
+      select: { id: true, reference: true, title: true, area: true, status: true, price: true, currency: true, category: true, subcategory: true, owner: { select: { fullName: true } } },
       orderBy: { updatedAt: "desc" },
       take: perGroup,
     }),
@@ -79,7 +83,7 @@ export async function globalSearch(actor: Actor, raw: string, perGroup = 5): Pro
     }),
     can.manageUsers(actor)
       ? db.user.findMany({
-          where: { OR: [{ name: like(q) }, { email: like(q) }] },
+          where: { role: { not: "CLIENT" }, OR: [{ name: like(q) }, { email: like(q) }] },
           select: { id: true, name: true, email: true, role: true },
           take: perGroup,
         })
@@ -119,7 +123,7 @@ export async function globalSearch(actor: Actor, raw: string, perGroup = 5): Pro
       items: properties.map((p) => ({
         id: p.id,
         title: `${p.reference} · ${p.title}`,
-        subtitle: [p.area, formatMoneyCompact(p.price, p.currency), p.owner ? `Owner: ${p.owner.fullName}` : null].filter(Boolean).join(" · "),
+        subtitle: [propertyClassLabel(p.category, p.subcategory), p.area, formatMoneyCompact(p.price, p.currency), p.owner ? `Owner: ${p.owner.fullName}` : null].filter(Boolean).join(" · "),
         badge: PROPERTY_STATUS_META[p.status].label,
         href: `/properties/${p.id}`,
       })),
@@ -223,4 +227,12 @@ export async function lookupLabel(actor: Actor, type: LookupType, id: string): P
       return r && { id: r.id, label: r.reference };
     }
   }
+}
+
+function hierarchyMatches(q: string): Prisma.PropertyWhereInput[] {
+  const needle = q.trim().toLowerCase();
+  const out: Prisma.PropertyWhereInput[] = [];
+  for (const [value, meta] of Object.entries(PROPERTY_CATEGORY_META)) if (meta.label.toLowerCase() === needle) out.push({ category: value as PropertyCategory });
+  for (const [value, meta] of Object.entries(PROPERTY_SUBCATEGORY_META)) if (meta.label.toLowerCase() === needle) out.push({ subcategory: value as PropertySubcategory });
+  return out;
 }

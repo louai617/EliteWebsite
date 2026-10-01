@@ -6,7 +6,7 @@ import { differenceInCalendarDays, format, formatDistanceToNowStrict } from "dat
  * interpreted) in this zone explicitly, so the server render, the browser and the database
  * always agree — regardless of the host or the viewer's machine time zone.
  */
-export const APP_TIMEZONE = "Asia/Qatar";
+export const APP_TIMEZONE = process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE || "Asia/Qatar";
 
 const inZone = (date: Date | string | number) => new TZDate(new Date(date).getTime(), APP_TIMEZONE);
 

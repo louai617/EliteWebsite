@@ -5,13 +5,14 @@ import type { DealStatus, DealType } from "@/generated/prisma/enums";
 import { db } from "@/lib/db";
 import { forbidden, invalid, notFound } from "@/lib/errors";
 import { calculateCommission } from "@/lib/commission";
-import { can, canAssignTo, isManager, scope, type Actor } from "@/lib/permissions";
+import { can, canAssignTo, isManager, scope, isStaff, type Actor } from "@/lib/permissions";
 import { DEAL_STATUS_META } from "@/lib/constants";
 import { formatMoney } from "@/lib/format";
 import { paginate, skipTake, type ListParams } from "@/lib/list-params";
 import { like } from "@/lib/search";
 import type { dealSchema, updateDealSchema } from "@/schemas/deal";
 import { logActivity } from "./activity";
+import { onDealWon } from "./automation";
 import { assertActiveUser, assertRelated } from "./access";
 import { nextReference } from "./references";
 import type { Tx } from "./types";
@@ -107,11 +108,12 @@ export type DealDetail = NonNullable<Awaited<ReturnType<typeof getDeal>>>;
  *  - Closed won  → property Sold/Rented, lead Won
  *  - Contract pending/signed → property Reserved if it was still available
  */
-async function syncSideEffects(tx: Tx, actor: Actor, deal: { id: string; reference: string; status: DealStatus; type: DealType; propertyId: string; leadId: string | null }) {
+async function syncSideEffects(tx: Tx, actor: Actor, deal: { id: string; reference: string; status: DealStatus; type: DealType; propertyId: string; leadId: string | null; clientId: string; agentId: string | null }) {
   const property = await tx.property.findUnique({ where: { id: deal.propertyId }, select: { status: true, reference: true, title: true, ownerId: true } });
   if (!property) return;
   const propertyLabel = `${property.reference} · ${property.title}`;
   if (deal.status === "CLOSED_WON") {
+    await onDealWon(tx, deal, { id: actor.id, staff: isStaff(actor) });
     const to = deal.type === "RENTAL" ? "RENTED" : "SOLD";
     if (property.status !== to) {
       await tx.property.update({ where: { id: deal.propertyId }, data: { status: to } });
@@ -166,7 +168,7 @@ export async function createDeal(actor: Actor, input: z.output<typeof dealSchema
     const closed = data.status === "CLOSED_WON" || data.status === "CLOSED_LOST";
     const deal = await tx.deal.create({
       data: { ...data, reference, closedAt: closed ? new Date() : null },
-      select: { id: true, reference: true, status: true, type: true, propertyId: true, leadId: true, clientId: true, amount: true },
+      select: { id: true, reference: true, status: true, type: true, propertyId: true, leadId: true, clientId: true, agentId: true, amount: true },
     });
     const links = { dealId: deal.id, propertyId: deal.propertyId, clientId: deal.clientId, leadId: deal.leadId };
     await logActivity(tx, {
@@ -202,7 +204,7 @@ export async function updateDeal(actor: Actor, input: z.output<typeof updateDeal
     const deal = await tx.deal.update({
       where: { id },
       data: { ...data, closedAt: closedAtFor(current, data.status) },
-      select: { id: true, reference: true, status: true, type: true, propertyId: true, leadId: true, clientId: true },
+      select: { id: true, reference: true, status: true, type: true, propertyId: true, leadId: true, clientId: true, agentId: true },
     });
     const links = { dealId: id, propertyId: deal.propertyId, clientId: deal.clientId, leadId: deal.leadId };
     if (current.status !== deal.status) {
@@ -225,7 +227,7 @@ export async function setDealStatus(actor: Actor, id: string, status: DealStatus
     const deal = await tx.deal.update({
       where: { id },
       data: { status, closedAt: closedAtFor(current, status), ...(status === "CONTRACT_SIGNED" ? { contractDate: new Date() } : {}) },
-      select: { id: true, reference: true, status: true, type: true, propertyId: true, leadId: true, clientId: true },
+      select: { id: true, reference: true, status: true, type: true, propertyId: true, leadId: true, clientId: true, agentId: true },
     });
     const closed = status === "CLOSED_WON" || status === "CLOSED_LOST";
     await logActivity(tx, {

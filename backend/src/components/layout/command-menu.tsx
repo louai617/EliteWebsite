@@ -16,7 +16,7 @@ import {
   CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command";
-import { NAV } from "./nav";
+import { visibleNav, type NavItem } from "./nav";
 
 const KIND_ICON: Record<SearchKind, LucideIcon> = {
   lead: UsersRound,
@@ -79,7 +79,8 @@ export function CommandMenu({ open, onOpenChange, user }: { open: boolean; onOpe
     router.push(href);
   };
 
-  const navItems = NAV.flatMap((g) => g.items).filter((i) => !i.roles || i.roles.includes(user.role));
+  // Every reachable page, including nested sections ("Properties › Commercial › Company").
+  const navItems = visibleNav(user).flatMap((g) => flattenNav(g.items));
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange} title="Search" description="Search the CRM">
@@ -114,7 +115,7 @@ export function CommandMenu({ open, onOpenChange, user }: { open: boolean; onOpe
               <CommandGroup heading="Go to">
                 {navItems.map((item) => (
                   <CommandItem key={item.href} value={`nav-${item.href}`} onSelect={() => go(item.href)}>
-                    <item.icon /> {item.label}
+                    {item.icon && <item.icon />} {item.label}
                   </CommandItem>
                 ))}
               </CommandGroup>
@@ -124,6 +125,7 @@ export function CommandMenu({ open, onOpenChange, user }: { open: boolean; onOpe
                 <CommandItem value="create-property" onSelect={() => go("/properties/new")}>New property</CommandItem>
                 <CommandItem value="create-viewing" onSelect={() => go("/viewings?new=1")}>Schedule viewing</CommandItem>
                 <CommandItem value="create-task" onSelect={() => go("/tasks?new=1")}>New task</CommandItem>
+                <CommandItem value="log-activity" onSelect={() => go("/tasks?log=1")}>Log activity (call, follow-up…)</CommandItem>
               </CommandGroup>
             </>
           )}
@@ -143,4 +145,25 @@ function CommandRoot({ query, setQuery, loading, children }: { query: string; se
       <CommandList>{children}</CommandList>
     </Command>
   );
+}
+
+function flattenNav(items: NavItem[], parents: string[] = [], icon?: NavItem["icon"]): { href: string; label: string; icon?: NavItem["icon"] }[] {
+  const seen = new Set<string>();
+  const out: { href: string; label: string; icon?: NavItem["icon"] }[] = [];
+  for (const item of items) {
+    const label = [...parents, item.label].join(" › ");
+    if (!seen.has(item.href)) {
+      seen.add(item.href);
+      out.push({ href: item.href, label: item.children && parents.length === 0 ? item.label : label, icon: item.icon ?? icon });
+    }
+    if (item.children) {
+      for (const child of flattenNav(item.children, [...parents, item.label], item.icon ?? icon)) {
+        if (!seen.has(child.href)) {
+          seen.add(child.href);
+          out.push(child);
+        }
+      }
+    }
+  }
+  return out;
 }

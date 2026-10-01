@@ -1,7 +1,7 @@
 "use client";
 
 import { useUrlState } from "@/hooks/use-url-state";
-import { PRIORITY_META, TASK_STATUS_META, options } from "@/lib/constants";
+import { PRIORITY_META, TASK_STATUS_META, TASK_TYPE_META, options } from "@/lib/constants";
 import { cn } from "@/lib/utils";
 import type { AgentOption, Viewer } from "@/types/options";
 import { ClearFilters, FilterSelect, SearchInput, Toolbar } from "@/components/shared/data-table/toolbar";
@@ -15,7 +15,7 @@ const TABS = [
   { value: "all", label: "All" },
 ];
 
-export function TasksToolbar({ agents, viewer, counts }: { agents: AgentOption[]; viewer: Viewer; counts: Record<string, number> }) {
+export function TasksToolbar({ agents, viewer, counts, showAssignee = false }: { agents: AgentOption[]; viewer: Viewer; counts: Record<string, number>; showAssignee?: boolean }) {
   const url = useUrlState();
   const tab = url.get("tab") ?? "";
   return (
@@ -43,10 +43,11 @@ export function TasksToolbar({ agents, viewer, counts }: { agents: AgentOption[]
         <SearchInput placeholder="Search tasks…" />
         {tab === "all" && <FilterSelect param="status" label="Status" options={options(TASK_STATUS_META)} />}
         <FilterSelect param="priority" label="Priority" options={options(PRIORITY_META)} />
-        {viewer.isManager && (
+        <FilterSelect param="type" label="Type" options={options(TASK_TYPE_META)} />
+        {showAssignee && viewer.isManager && (
           <FilterSelect param="assignee" label="Assignee" options={[{ value: "none", label: "Unassigned" }, ...agents.map((a) => ({ value: a.id, label: a.id === viewer.id ? `${a.name} (me)` : a.name }))]} />
         )}
-        <ClearFilters params={["q", "status", "priority", "assignee"]} keep={["tab"]} />
+        <ClearFilters params={["q", "status", "priority", "type", "assignee"]} keep={["tab"]} />
       </Toolbar>
     </div>
   );

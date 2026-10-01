@@ -10,6 +10,7 @@ import { conflict, forbidden, invalid, notFound } from "@/lib/errors";
 import { can, type Actor } from "@/lib/permissions";
 import { paginate, skipTake, type ListParams } from "@/lib/list-params";
 import { like } from "@/lib/search";
+import { STAFF_ROLES } from "@/lib/constants";
 import type { changePasswordSchema, createUserSchema, profileSchema, updateUserSchema } from "@/schemas/user";
 import { logActivity } from "./activity";
 
@@ -37,7 +38,8 @@ export async function listUsers(
   const where: Prisma.UserWhereInput = {
     AND: [
       params.q ? { OR: [{ name: like(params.q) }, { email: like(params.q) }, { phone: like(params.q) }] } : {},
-      filters.role ? { role: filters.role } : {},
+      // Client-portal accounts are managed from the client record, not the staff list.
+      filters.role && filters.role !== "CLIENT" ? { role: filters.role } : { role: { in: STAFF_ROLES } },
       filters.active === undefined ? {} : { isActive: filters.active },
     ],
   };
@@ -56,7 +58,7 @@ export async function listUsers(
 /** Active staff for assignment pickers (small table — fetched once per request). */
 export const listAssignableUsers = cache(() =>
   db.user.findMany({
-    where: { isActive: true },
+    where: { isActive: true, role: { in: STAFF_ROLES } },
     orderBy: [{ role: "asc" }, { name: "asc" }],
     select: { id: true, name: true, role: true, avatarUrl: true },
   }),

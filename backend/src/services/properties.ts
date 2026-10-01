@@ -1,15 +1,16 @@
 import "server-only";
 import type { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
-import type { Furnishing, ListingPurpose, PropertyStatus, PropertyType } from "@/generated/prisma/enums";
+import type { Furnishing, ListingPurpose, PropertyCategory, PropertyStatus, PropertySubcategory, PropertyType } from "@/generated/prisma/enums";
 import { db } from "@/lib/db";
 import { conflict, forbidden, invalid, notFound } from "@/lib/errors";
-import { can, canAssignTo, canEditProperty, canSeeOwnerContact, isManager, scope, type Actor } from "@/lib/permissions";
+import { can, canAssignTo, canEditProperty, canSeeOwnerContact, isManager, isStaff, scope, type Actor } from "@/lib/permissions";
 import { paginate, skipTake, type ListParams } from "@/lib/list-params";
-import { PROPERTY_STATUS_META } from "@/lib/constants";
+import { PROPERTY_HIERARCHY, PROPERTY_STATUS_META, categoryForType } from "@/lib/constants";
 import { like } from "@/lib/search";
 import type { propertySchema, updatePropertySchema } from "@/schemas/property";
 import { logActivity } from "./activity";
+import { onPropertyCreated } from "./automation";
 import { assertActiveUser, assertCanAccess } from "./access";
 import { nextReference } from "./references";
 import { deleteUpload } from "./storage";
@@ -17,6 +18,8 @@ import { deleteUpload } from "./storage";
 export const PROPERTY_SORTS = ["createdAt", "updatedAt", "price", "areaSqm", "bedrooms", "reference", "title"] as const;
 
 export interface PropertyFilters {
+  category?: PropertyCategory;
+  subcategory?: PropertySubcategory;
   status?: PropertyStatus;
   purpose?: ListingPurpose;
   type?: PropertyType;
@@ -46,6 +49,8 @@ export function propertyWhere(actor: Actor, q: string | undefined, f: PropertyFi
             ],
           }
         : {},
+      f.category ? { category: f.category } : {},
+      f.subcategory ? { subcategory: f.subcategory } : {},
       f.status ? { status: f.status } : {},
       f.purpose ? { purpose: f.purpose } : {},
       f.type ? { type: f.type } : {},
@@ -66,6 +71,8 @@ const listSelect = {
   reference: true,
   title: true,
   type: true,
+  category: true,
+  subcategory: true,
   purpose: true,
   status: true,
   price: true,
@@ -102,6 +109,22 @@ export async function listProperties(actor: Actor, params: ListParams<(typeof PR
 }
 
 export type PropertyListItem = Awaited<ReturnType<typeof listProperties>>["items"][number];
+
+/**
+ * The property hierarchy with live counts:
+ * [{ category, label, count, subcategories: [{ subcategory, label, count }] }].
+ */
+export async function propertyHierarchy(actor: Actor) {
+  const rows = await db.property.groupBy({ by: ["category", "subcategory"], where: scope.properties(actor), _count: { _all: true } });
+  const count = (category: PropertyCategory, subcategory?: PropertySubcategory) =>
+    rows.filter((r) => r.category === category && (!subcategory || r.subcategory === subcategory)).reduce((sum, r) => sum + r._count._all, 0);
+  return PROPERTY_HIERARCHY.map((node) => ({
+    category: node.category,
+    label: node.label,
+    count: count(node.category),
+    subcategories: node.subcategories.map((sub) => ({ ...sub, count: count(node.category, sub.subcategory) })),
+  }));
+}
 
 /** Distinct areas in use (for filter dropdowns), merged with the Doha suggestions. */
 export async function propertyAreas() {
@@ -172,11 +195,12 @@ async function checkRelations(actor: Actor, input: { ownerId: string | null; age
 }
 
 export async function createProperty(actor: Actor, input: z.output<typeof propertySchema>) {
-  const data = { ...input, agentId: input.agentId ?? (isManager(actor) ? null : actor.id) };
+  const data = { ...input, category: input.category ?? categoryForType(input.type), agentId: input.agentId ?? (isManager(actor) ? null : actor.id) };
   await checkRelations(actor, data);
   return db.$transaction(async (tx) => {
     const reference = await nextReference(tx, "property", "ELT");
     const property = await tx.property.create({ data: { ...data, reference }, select: { id: true, reference: true, title: true, agentId: true, ownerId: true } });
+    await onPropertyCreated(tx, property, { id: actor.id, staff: isStaff(actor) });
     const label = `${property.reference} · ${property.title}`;
     await logActivity(tx, {
       action: "CREATED", entityType: "PROPERTY", entityId: property.id, entityLabel: label,
@@ -194,7 +218,8 @@ export async function createProperty(actor: Actor, input: z.output<typeof proper
 }
 
 export async function updateProperty(actor: Actor, input: z.output<typeof updatePropertySchema>) {
-  const { id, ...data } = input;
+  const { id, ...fields } = input;
+  const data = { ...fields, category: fields.category ?? categoryForType(fields.type) };
   const current = await db.property.findUnique({ where: { id }, select: { id: true, reference: true, agentId: true, status: true } });
   if (!current) throw notFound("Property");
   if (!canEditProperty(actor, current)) throw forbidden("You can only edit listings assigned to you.");

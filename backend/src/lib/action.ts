@@ -2,7 +2,8 @@ import "server-only";
 import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { getCurrentUser, type SessionUser } from "@/lib/auth/session";
-import { toPublicError, unauthorized } from "@/lib/errors";
+import { forbidden, toPublicError, unauthorized } from "@/lib/errors";
+import { isStaff } from "@/lib/permissions";
 
 import type { ActionResult, FieldErrors } from "@/types/action";
 
@@ -40,6 +41,8 @@ export function authedAction<S extends z.ZodType, R>(
     try {
       const user = await getCurrentUser();
       if (!user) throw unauthorized();
+      // Server Actions belong to the staff CRM; client-portal accounts use the portal API.
+      if (!isStaff(user)) throw forbidden();
 
       const parsed = schema.safeParse(raw);
       if (!parsed.success) {
