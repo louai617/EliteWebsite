@@ -21,5 +21,7 @@ cd frontend && npm install && cp .env.example .env.local && npm run dev
 | Agents | http://localhost:3002/login | omar@ … youssef@elite.qa / `Elite@2026` |
 | Client | http://localhost:3001/en/login | client@elite.qa / `Client@2026` |
 
+Step-by-step instructions and troubleshooting: [`SETUP.md`](SETUP.md).
+
 Development accounts only (created by the seed) — change them before using real data. Staff
 who sign in on the website are sent to the CRM; clients who open the CRM are sent to their portal.
