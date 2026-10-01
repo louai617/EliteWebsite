@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ELITE Real Estate — website & client portal
 
-## Getting Started
-
-First, run the development server:
+Next.js 16 (App Router) · next-intl (English / Arabic) · Tailwind CSS · React Hook Form + Zod.
+Runs on **http://localhost:3001** and talks to the CRM backend's REST API
+(`backend/`, http://localhost:3002/api). This app never touches the database and holds no
+secrets: only public values live in its environment.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local     # NEXT_PUBLIC_API_URL=http://localhost:3002/api …
+npm run dev                    # http://localhost:3001  (start the backend first)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:3002/api` | Backend REST API |
+| `NEXT_PUBLIC_CRM_URL` | API origin | Staff CRM (staff are redirected there after login) |
+| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3000` | Canonical URL for SEO metadata |
+| `NEXT_PUBLIC_BUSINESS_TIMEZONE` | `Asia/Qatar` | Time zone for dates in the portal |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How it connects
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- `src/lib/api.ts` — the single API client: `fetch` with `credentials: "include"` (the
+  backend's httpOnly session cookie), typed responses (`src/lib/api-types.ts`) and an
+  `ApiError` carrying the backend's message and field errors. No tokens in localStorage.
+- `src/lib/AuthContext.tsx` — session state from `GET /auth/me`; login / register / logout.
+  Roles shown here only drive navigation — the backend enforces every permission.
+- Website forms (property enquiry, chat assistant) post to `POST /public/leads`, which
+  creates a lead and a response task in the CRM. "Forgot password" opens a task for the team.
 
-## Learn More
+## Client portal (`/[locale]/dashboard`)
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+For CLIENT accounts (self-registered on `/register`, or created by a manager from the client's
+page in the CRM): overview with the assigned agent and upcoming viewings, **Properties**
+(shortlist, viewed, under contract), **Enquiries** (status + new request), **Tasks** shared by
+the agent, **Reports** (viewings and deals), **Activity**, **My data** (JSON export) and
+**Account** (contact details, password). Every request is scoped by the backend to the signed-in
+client. The old static `/dashboard/admin` pages now redirect to the CRM.

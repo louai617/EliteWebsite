@@ -5,13 +5,15 @@ import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { useTranslations } from 'next-intl';
-import axios from 'axios';
+import { api, errorMessage } from '@/lib/api';
 
 const leadSchema = z.object({
-  full_name: z.string().min(3, 'Name is required'),
-  email: z.string().email('Invalid email address'),
-  phone: z.string().min(8, 'Valid phone number is required'),
-  message: z.string().min(10, 'Message must be at least 10 characters'),
+  full_name: z.string().trim().min(2, 'Name is required').max(120),
+  email: z.string().trim().email('Invalid email address'),
+  phone: z.string().trim().regex(/^\+?[0-9][0-9 ()-]{6,19}$/, 'Enter a valid phone number, e.g. +974 5512 3456'),
+  message: z.string().trim().min(10, 'Message must be at least 10 characters').max(2000),
+  /** Honeypot (hidden from people). */
+  website: z.string().optional(),
 });
 
 type LeadFormData = z.infer<typeof leadSchema>;
@@ -24,6 +26,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ propertyId }) => {
   const t = useTranslations('common');
   const [isSubmitting, setIsSubmitting] = React.useState(false);
   const [isSuccess, setIsSuccess] = React.useState(false);
+  const [error, setError] = React.useState<string | null>(null);
 
   const {
     register,
@@ -36,15 +39,21 @@ const LeadForm: React.FC<LeadFormProps> = ({ propertyId }) => {
 
   const onSubmit = async (data: LeadFormData) => {
     setIsSubmitting(true);
+    setError(null);
     try {
-      await axios.post(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/leads`, {
-        ...data,
-        propertyId,
+      // Creates a lead in the CRM (backend/src/services/portal.ts → createPublicLead).
+      await api.post('/public/leads', {
+        fullName: data.full_name,
+        email: data.email,
+        phone: data.phone,
+        message: `${data.message}\n\nWebsite listing: ${propertyId}`,
+        propertyRef: propertyId,
+        website: data.website ?? '',
       });
       setIsSuccess(true);
       reset();
-    } catch (error) {
-      console.error('Error submitting lead:', error);
+    } catch (err) {
+      setError(errorMessage(err, 'Your inquiry could not be sent. Please try again or contact us on WhatsApp.'));
     } finally {
       setIsSubmitting(false);
     }
@@ -69,7 +78,9 @@ const LeadForm: React.FC<LeadFormProps> = ({ propertyId }) => {
     <div className="bg-white p-6 rounded-lg shadow-sm border border-gray-100">
       <h3 className="text-xl font-bold mb-6 text-gray-900">{t('send_inquiry')}</h3>
       
-      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
+      <form onSubmit={handleSubmit(onSubmit)} className="space-y-4" noValidate>
+        {error && <p role="alert" className="text-sm text-red-700 bg-red-50 border border-red-100 rounded px-3 py-2">{error}</p>}
+        <input {...register('website')} type="text" tabIndex={-1} autoComplete="off" aria-hidden="true" className="hidden" />
         <div>
           <label className="block text-sm font-medium text-gray-700 mb-1">{t('full_name')}</label>
           <input

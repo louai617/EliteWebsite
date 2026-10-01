@@ -3,13 +3,12 @@
 import React, { useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Mail, ArrowRight, ArrowLeft, CheckCircle2, Loader2, AlertCircle } from 'lucide-react';
-import api from '@/lib/api';
+import { api, errorMessage } from '@/lib/api';
 
 const forgotSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -37,8 +36,8 @@ export default function ForgotPasswordPage() {
     try {
       await api.post('/auth/forgot-password', data);
       setIsSent(true);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Something went wrong. Please try again.');
+    } catch (err) {
+      setError(errorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -67,9 +66,9 @@ export default function ForgotPasswordPage() {
               <div className="w-20 h-20 bg-green-50 text-green-500 rounded-full flex items-center justify-center mx-auto mb-6 border-2 border-green-100">
                 <CheckCircle2 className="w-10 h-10" />
               </div>
-              <h2 className="text-xl font-bold text-gray-900 mb-2">Check Your Email</h2>
+              <h2 className="text-xl font-bold text-gray-900 mb-2">Request Received</h2>
               <p className="text-gray-500 mb-8 font-light">
-                We've sent password reset instructions to your email address.
+                If an account exists for this email, our team will contact you shortly to verify your identity and reset your password.
               </p>
               <Link 
                 href={`/${locale}/login`}
@@ -82,7 +81,7 @@ export default function ForgotPasswordPage() {
           ) : (
             <>
               <p className="text-gray-500 mb-8 font-light">
-                Enter your email address and we'll send you a link to reset your password.
+                Enter the email address of your account. Our team will verify your identity and help you reset your password.
               </p>
 
               <form onSubmit={handleSubmit(onSubmit)} className="space-y-6 text-left">
