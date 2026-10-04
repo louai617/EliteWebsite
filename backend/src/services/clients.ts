@@ -57,6 +57,8 @@ export async function getClient(actor: Actor, id: string) {
         orderBy: { createdAt: "desc" },
         select: {
           id: true,
+          priceAtSave: true,
+          createdAt: true,
           property: {
             select: {
               id: true, reference: true, title: true, area: true, status: true, price: true, currency: true, purpose: true,
@@ -67,7 +69,7 @@ export async function getClient(actor: Actor, id: string) {
       },
       viewings: {
         orderBy: { startsAt: "desc" },
-        select: { id: true, startsAt: true, endsAt: true, status: true, property: { select: { id: true, reference: true, title: true } }, agent: { select: { name: true } } },
+        select: { id: true, startsAt: true, endsAt: true, status: true, bookedByClient: true, property: { select: { id: true, reference: true, title: true } }, agent: { select: { name: true } } },
       },
       deals: {
         orderBy: { createdAt: "desc" },

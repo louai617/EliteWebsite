@@ -8,6 +8,7 @@ import type { Actor } from "@/lib/permissions";
 import type { portalAccountUpdateSchema, portalEnquirySchema, publicLeadSchema } from "@/schemas/portal";
 import { logActivity } from "./activity";
 import { onLeadAssigned } from "./automation";
+import { journey } from "./client-dashboard";
 
 /**
  * Client portal. Every query is scoped to the CLIENT user's own CRM client record, taken
@@ -66,18 +67,22 @@ function absolute<T extends { images: { url: string; isPrimary: boolean }[] }>(p
 export async function portalOverview(actor: PortalActor, baseUrl: string) {
   const clientId = clientIdOf(actor);
   const now = new Date();
-  const [client, shortlisted, upcoming, activeDeals, openEnquiries, openTasks] = await Promise.all([
+  const [client, shortlisted, upcoming, activeDeals, openEnquiries, openTasks, savedPrices, progress] = await Promise.all([
     db.client.findUnique({ where: { id: clientId }, select: { id: true, fullName: true, email: true, phone: true, clientType: true, budgetMin: true, budgetMax: true, requirements: true, agent: agentContact } }),
     db.propertyInterest.count({ where: { clientId } }),
-    db.viewing.findMany({ where: { clientId, status: "SCHEDULED", startsAt: { gte: now } }, orderBy: { startsAt: "asc" }, take: 5, select: { id: true, startsAt: true, endsAt: true, status: true, agent: agentContact, property: { select: portalPropertySelect } } }),
+    db.viewing.findMany({ where: { clientId, status: { in: ["SCHEDULED", "CONFIRMED"] }, startsAt: { gte: now } }, orderBy: { startsAt: "asc" }, take: 5, select: { id: true, startsAt: true, endsAt: true, status: true, bookedByClient: true, agent: agentContact, property: { select: portalPropertySelect } } }),
     db.deal.count({ where: { clientId, status: { notIn: ["CLOSED_WON", "CLOSED_LOST"] } } }),
     db.lead.count({ where: { clientId, status: { notIn: ["WON", "LOST"] } } }),
     db.task.count({ where: { clientId, clientVisible: true, status: { in: ["TODO", "IN_PROGRESS"] } } }),
+    db.propertyInterest.findMany({ where: { clientId, priceAtSave: { not: null } }, select: { priceAtSave: true, property: { select: { price: true } } } }),
+    journey(clientId),
   ]);
   if (!client) throw notFound("Account");
+  const priceDrops = savedPrices.filter((s) => s.priceAtSave && s.property.price < s.priceAtSave).length;
   return {
     client,
-    counts: { shortlisted, upcomingViewings: upcoming.length, activeDeals, openEnquiries, openTasks },
+    journey: progress,
+    counts: { shortlisted, upcomingViewings: upcoming.length, activeDeals, openEnquiries, openTasks, priceDrops },
     upcomingViewings: upcoming.map((v) => ({ ...v, property: absolute(v.property, baseUrl) })),
   };
 }

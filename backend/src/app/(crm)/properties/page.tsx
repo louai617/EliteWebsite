@@ -33,6 +33,7 @@ export default async function PropertiesPage({ searchParams }: PageProps<"/prope
     furnishing: enumParam(sp, "furnishing", Furnishing),
     agentId: param(sp, "agent"),
     featured: param(sp, "featured") === "1",
+    website: param(sp, "website") === "live" ? ("live" as const) : param(sp, "website") === "hidden" ? ("hidden" as const) : undefined,
   };
   const [result, areas, agents] = await Promise.all([listProperties(user, params, filters), propertyAreas(), listAssignableUsers()]);
   const viewer = toViewer(user);

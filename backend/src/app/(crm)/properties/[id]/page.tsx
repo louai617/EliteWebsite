@@ -1,7 +1,8 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Bath, BedDouble, Building, CalendarClock, Car, Check, ExternalLink, Handshake, Layers, Lock, MapPin, Maximize, Pencil, Sofa, Star, UsersRound } from "lucide-react";
+import { Bath, BedDouble, Building, CalendarClock, Car, Check, ExternalLink, Globe, Handshake, Layers, Lock, MapPin, Maximize, Pencil, Sofa, Star, UsersRound } from "lucide-react";
+import { CLIENT_APP_URL } from "@/lib/env";
 import { requireUser } from "@/lib/auth/session";
 import { toViewer } from "@/lib/viewer";
 import {
@@ -63,6 +64,8 @@ export default async function PropertyPage({ params }: PageProps<"/properties/[i
   const { id } = await params;
   const property = await getProperty(user, id);
   if (!property) notFound();
+  const websiteLive = property.websitePublished && (property.status === "AVAILABLE" || property.status === "RESERVED");
+  const websiteUrl = `${CLIENT_APP_URL}/en/properties/${encodeURIComponent(property.reference)}`;
 
   const [notes, activity, agents, settings] = await Promise.all([listNotes("property", id), timeline("propertyId", id, 40), listAssignableUsers(), getSettings()]);
   const viewer = toViewer(user);
@@ -104,6 +107,15 @@ export default async function PropertyPage({ params }: PageProps<"/properties/[i
               <EnumBadge meta={PROPERTY_SUBCATEGORY_META} value={property.subcategory} />
             </Link>
             <span className="font-mono text-xs">{property.reference}</span>
+            {websiteLive ? (
+              <a href={websiteUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-xs font-medium text-emerald-700 hover:underline">
+                <Globe className="size-3" /> Live on website
+              </a>
+            ) : (
+              <span className="inline-flex items-center gap-1 rounded-full bg-secondary px-2 py-0.5 text-xs text-muted-foreground" title={property.websitePublished ? "Only Available or Reserved listings are shown on the website" : "Turn on “Show on the website” in Edit"}>
+                <Globe className="size-3" /> {property.websitePublished ? "Not on website (status)" : "Hidden from website"}
+              </span>
+            )}
             <span className="flex items-center gap-1">
               <MapPin className="size-3.5" />
               {[property.buildingName, property.area, property.city].filter(Boolean).join(", ")}
@@ -409,6 +421,11 @@ export default async function PropertyPage({ params }: PageProps<"/properties/[i
                   { label: "Address", value: [property.buildingName, property.tower && `Tower ${property.tower}`, property.buildingNumber && `Bldg ${property.buildingNumber}`, property.street, property.area, property.city, property.country].filter(Boolean).join(", ") },
                   { label: "Coordinates", value: property.latitude != null && property.longitude != null ? `${property.latitude}, ${property.longitude}` : null },
                   { label: "Links", value: links.length ? links : null },
+                  { label: "Website", value: websiteLive ? <a href={websiteUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1 hover:underline">View on eliterealestate.qa <ExternalLink className="size-3" /></a> : property.websitePublished ? "Published, shown again once Available/Reserved" : "Hidden" },
+                  { label: "On website since", value: websiteLive && property.websitePublishedAt ? formatDate(property.websitePublishedAt) : null },
+                  { label: "Arabic title", value: property.titleAr ? <span dir="rtl">{property.titleAr}</span> : null },
+                  { label: "Completion", value: property.completionStatus === "OFF_PLAN" ? `Off-plan${property.handover ? ` · handover ${property.handover}` : ""}` : "Ready" },
+                  { label: "Available from", value: property.availableFrom ? formatDate(property.availableFrom) : null },
                   { label: "SEO title", value: property.seoTitle },
                   { label: "Last posted", value: property.lastPostedAt ? formatDate(property.lastPostedAt) : null },
                   { label: "Listed", value: formatDate(property.createdAt) },

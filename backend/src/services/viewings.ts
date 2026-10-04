@@ -11,6 +11,7 @@ import { paginate, skipTake, type ListParams } from "@/lib/list-params";
 import { like } from "@/lib/search";
 import type { updateViewingSchema, viewingSchema } from "@/schemas/viewing";
 import { logActivity } from "./activity";
+import { completeTasks } from "./work-activities";
 import { onLeadStatusChanged, onViewingCancelled, onViewingCompleted, onViewingScheduled } from "./automation";
 import { assertActiveUser, assertRelated } from "./access";
 import type { Tx } from "./types";
@@ -25,6 +26,8 @@ export interface ViewingFilters {
   to?: Date;
   propertyId?: string;
   upcoming?: boolean;
+  /** Website bookings still waiting for the agent's confirmation. */
+  toConfirm?: boolean;
 }
 
 export const viewingSelect = {
@@ -33,6 +36,8 @@ export const viewingSelect = {
   endsAt: true,
   status: true,
   notes: true,
+  bookedByClient: true,
+  clientNote: true,
   propertyId: true,
   leadId: true,
   clientId: true,
@@ -63,6 +68,7 @@ function viewingWhere(actor: Actor, q: string | undefined, f: ViewingFilters): P
       f.propertyId ? { propertyId: f.propertyId } : {},
       f.from || f.to ? { startsAt: { gte: f.from, lt: f.to ? new Date(f.to.getTime() + 86_400_000) : undefined } } : {},
       f.upcoming ? { startsAt: { gte: zonedDayStart() }, status: { in: ACTIVE } } : {},
+      f.toConfirm ? { bookedByClient: true, status: "SCHEDULED", startsAt: { gte: new Date() } } : {},
     ],
   };
 }
@@ -100,7 +106,7 @@ export async function getViewing(actor: Actor, id: string) {
   return db.viewing.findFirst({ where: { id, ...scope.viewings(actor) }, select: { ...viewingSelect, createdAt: true, updatedAt: true } });
 }
 
-async function assertNoClash(tx: Tx, agentId: string | null, startsAt: Date, endsAt: Date, excludeId?: string) {
+export async function assertNoClash(tx: Tx, agentId: string | null, startsAt: Date, endsAt: Date, excludeId?: string) {
   if (!agentId) return;
   const clash = await tx.viewing.findFirst({
     where: {
@@ -202,6 +208,8 @@ export async function setViewingStatus(actor: Actor, id: string, status: Viewing
   return db.$transaction(async (tx) => {
     const viewing = await tx.viewing.update({ where: { id }, data: { status, ...(notes !== undefined ? { notes } : {}) }, select: { id: true, status: true } });
     if (current.status !== "COMPLETED" && status === "COMPLETED") await onViewingCompleted(tx, current, { id: actor.id, staff: isStaff(actor) });
+    // Confirming a website booking closes its "confirm" task.
+    if (status === "CONFIRMED") await completeTasks(tx, { viewingId: id, autoKey: { startsWith: "confirm-booking:" } }, "Completed: the booking was confirmed", actor.id);
     if (status === "CANCELLED" || status === "NO_SHOW") await onViewingCancelled(tx, id, status === "CANCELLED" ? "The viewing was cancelled" : "The client did not show up", actor.id);
     const { ref, who } = await labelFor(tx, current.propertyId, current.leadId, current.clientId);
     const action = status === "COMPLETED" ? "COMPLETED" : status === "CANCELLED" ? "CANCELLED" : "STATUS_CHANGED";

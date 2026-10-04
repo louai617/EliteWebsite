@@ -52,7 +52,20 @@ export function ViewingsTable({ rows, agents, viewer, filtered }: { rows: Viewin
         ),
     },
     { id: "agent", header: "Agent", cell: (v) => <AgentCell agent={v.agent} /> },
-    { id: "status", header: "Status", cell: (v) => <EnumBadge meta={VIEWING_STATUS_META} value={v.status} dot /> },
+    {
+      id: "status",
+      header: "Status",
+      cell: (v) => (
+        <span className="flex flex-wrap items-center gap-1.5">
+          <EnumBadge meta={VIEWING_STATUS_META} value={v.status} dot />
+          {v.bookedByClient && (
+            <span className={v.status === "SCHEDULED" ? "rounded bg-amber-50 px-1.5 py-0.5 text-[11px] font-medium text-amber-700" : "text-[11px] text-muted-foreground"} title={v.clientNote ?? "Booked by the client on the website"}>
+              {v.status === "SCHEDULED" ? "Website · confirm" : "Website"}
+            </span>
+          )}
+        </span>
+      ),
+    },
     { id: "notes", header: "Notes", defaultHidden: true, cell: (v) => <span className="line-clamp-1 max-w-64 text-xs text-muted-foreground">{v.notes ?? "—"}</span> },
     { id: "actions", header: <span className="sr-only">Actions</span>, hideable: false, className: "w-10 text-right", cell: (v) => <ViewingActions viewing={v} agents={agents} viewer={viewer} /> },
   ];

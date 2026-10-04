@@ -19,6 +19,8 @@ import {
   options,
 } from "@/lib/constants";
 import { propertySchema, type PropertyInput, type PropertyValues } from "@/schemas/property";
+import { toDateInput } from "@/lib/format";
+import { WebsiteSection } from "./website-fields";
 import type { AgentOption, Viewer } from "@/types/options";
 import type { LookupOption } from "@/types/search";
 import { Button } from "@/components/ui/button";
@@ -74,15 +76,51 @@ const EMPTY: PropertyInput = {
   seoDescription: "",
   ownerId: null,
   agentId: null,
+  websitePublished: true,
+  isExclusive: false,
+  isVerified: false,
+  titleAr: "",
+  descriptionAr: "",
+  completionStatus: "READY",
+  ownershipType: null,
+  availableFrom: "",
+  handover: "",
+  developer: "",
+  serviceChargeSqm: "",
+  plotSqm: "",
+  totalFloors: "",
+  amenities: [],
+  highlights: [],
+  nearby: [],
+  paymentPlan: [],
 };
+
+const SELECT_KEYS = new Set(["furnishing", "ownerId", "agentId", "ownershipType"]);
+const LIST_KEYS = new Set(["amenities", "highlights", "nearby", "paymentPlan"]);
 
 /** Replaces nulls with "" so inputs stay controlled. */
 function toFormValues(values: PropertyFormDefaults): PropertyInput {
   const merged = { ...EMPTY } as Record<string, unknown>;
   for (const [key, value] of Object.entries(values)) {
     if (!(key in EMPTY)) continue;
-    const isSelect = key === "furnishing" || key === "ownerId" || key === "agentId";
-    merged[key] = value === null || value === undefined ? (isSelect ? null : (EMPTY as Record<string, unknown>)[key]) : value;
+    if (LIST_KEYS.has(key)) {
+      // Stored as JSON text in the database.
+      let list: unknown = value;
+      if (typeof value === "string") {
+        try {
+          list = JSON.parse(value);
+        } catch {
+          list = [];
+        }
+      }
+      merged[key] = Array.isArray(list) ? list : [];
+      continue;
+    }
+    if (key === "availableFrom") {
+      merged[key] = value ? toDateInput(value as Date | string) : "";
+      continue;
+    }
+    merged[key] = value === null || value === undefined ? (SELECT_KEYS.has(key) ? null : (EMPTY as Record<string, unknown>)[key]) : value;
   }
   return merged as PropertyInput;
 }
@@ -194,6 +232,8 @@ export function PropertyForm({
             <EntityField control={form.control} name="ownerId" label="Owner" kind="owner" placeholder="Search owners…" initialOption={ownerOption} description="Add new owners from the Owners page." />
             <AgentField control={form.control} name="agentId" agents={agents} viewer={viewer} />
           </FormSection>
+
+          <WebsiteSection control={form.control} />
 
           <FormSection title="Marketing" description="Portal links and SEO for the public website.">
             <TextField control={form.control} name="propertyFinderUrl" label="Property Finder URL" type="url" className="sm:col-span-2" />

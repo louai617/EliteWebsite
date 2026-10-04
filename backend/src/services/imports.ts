@@ -9,6 +9,7 @@ import { paginate, skipTake } from "@/lib/list-params";
 import { adapterFor, ListingError, normalizedListingSchema, type NormalizedListing } from "@/integrations";
 import { amenityFlags } from "@/integrations/mapping";
 import { logActivity } from "./activity";
+import { notifyWebsite } from "./website-sync";
 import { assertActiveUser } from "./access";
 import { nextReference } from "./references";
 import type { Tx } from "./types";
@@ -231,6 +232,7 @@ export async function runImport(actor: Actor, source: ExternalSource, records: u
     if (log.length >= 200) await db.importRecord.createMany({ data: log.splice(0) });
   }
   if (log.length) await db.importRecord.createMany({ data: log });
+  if (!options.dryRun && (counts.created || counts.updated)) notifyWebsite();
 
   const status: ImportRunStatus = counts.total > 0 && counts.failed === counts.total ? "FAILED" : counts.failed > 0 ? "COMPLETED_WITH_ERRORS" : "COMPLETED";
   await db.importRun.update({

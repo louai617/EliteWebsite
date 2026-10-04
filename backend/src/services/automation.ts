@@ -72,7 +72,7 @@ export async function onLeadStatusChanged(tx: Tx, lead: { id: string; agentId: s
 
 
 /** A viewing was scheduled: the agent gets a "Conduct viewing" task due at the start time. */
-export async function onViewingScheduled(tx: Tx, viewing: { id: string; agentId: string | null; startsAt: Date; propertyId: string; leadId: string | null; clientId: string | null; label: string }, actorId: string) {
+export async function onViewingScheduled(tx: Tx, viewing: { id: string; agentId: string | null; startsAt: Date; propertyId: string; leadId: string | null; clientId: string | null; label: string }, actorId: string | null) {
   if (!viewing.agentId) return;
   const autoKey = `viewing:${viewing.id}`;
   if (await tx.task.findUnique({ where: { autoKey }, select: { id: true } })) return;
@@ -96,7 +96,7 @@ export async function onViewingScheduled(tx: Tx, viewing: { id: string; agentId:
 }
 
 /** A viewing was cancelled or the client did not show: its open tasks are cancelled. */
-export async function onViewingCancelled(tx: Tx, viewingId: string, reason: string, actorId: string) {
+export async function onViewingCancelled(tx: Tx, viewingId: string, reason: string, actorId: string | null) {
   const tasks = await tx.task.findMany({ where: { viewingId, status: { in: ["TODO", "IN_PROGRESS"] } }, select: { id: true, status: true } });
   for (const t of tasks) {
     await tx.task.update({ where: { id: t.id }, data: { status: "CANCELLED" } });

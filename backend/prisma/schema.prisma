@@ -57,6 +57,17 @@ enum PropertyType {
   BUILDING
 }
 
+enum CompletionStatus {
+  READY
+  OFF_PLAN
+}
+
+enum OwnershipType {
+  FREEHOLD
+  LEASEHOLD
+  USUFRUCT
+}
+
 enum ListingPurpose {
   RENT
   SALE
@@ -382,6 +393,34 @@ model Property {
   seoTitle          String?
   seoDescription    String?
 
+  // Public website (eliterealestate.qa). The CRM is the single source of truth: a listing
+  // appears on the website while it is published and available/reserved.
+  websitePublished   Boolean           @default(true)
+  websitePublishedAt DateTime?
+  isExclusive        Boolean           @default(false)
+  /// Ticked by staff once ownership documents were checked.
+  isVerified         Boolean           @default(false)
+  titleAr            String?
+  descriptionAr      String?
+  completionStatus   CompletionStatus  @default(READY)
+  ownershipType      OwnershipType?
+  availableFrom      DateTime?
+  /// Off-plan handover, free text such as "Q4 2027".
+  handover           String?
+  developer          String?
+  /// QAR per m² per year.
+  serviceChargeSqm   Float?
+  plotSqm            Float?
+  totalFloors        Int?
+  /// JSON string[] of website amenity keys (in addition to the amenity flags above).
+  amenities          String?
+  /// JSON string[] of highlight keys (corner unit, marina view…).
+  highlights         String?
+  /// JSON [{ category, nameEn, nameAr, minutes, mode }] — nearby schools, malls, metro…
+  nearby             String?
+  /// JSON [{ key, percent, timingEn, timingAr }] — off-plan payment plan.
+  paymentPlan        String?
+
   ownerId   String?
   owner     Owner?   @relation(fields: [ownerId], references: [id], onDelete: Restrict)
   agentId   String?
@@ -401,6 +440,7 @@ model Property {
 
   @@index([status])
   @@index([category, subcategory, status])
+  @@index([websitePublished, status])
   @@index([purpose, status])
   @@index([type])
   @@index([area])
@@ -434,6 +474,8 @@ model PropertyInterest {
   lead       Lead?    @relation(fields: [leadId], references: [id], onDelete: Cascade)
   clientId   String?
   client     Client?  @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  /// Listing price when the client saved it (price-drop alerts on the website).
+  priceAtSave Int?
   createdAt  DateTime @default(now())
 
   @@unique([propertyId, leadId])
@@ -505,6 +547,14 @@ model Client {
   requirements String?
   notes        String?
 
+  // Search preferences (set by the client on the website or by the agent).
+  preferredPurpose  ListingPurpose?
+  /// JSON PropertyType[]
+  preferredTypes    String?
+  /// JSON string[] of areas
+  preferredAreas    String?
+  preferredBedrooms Int?
+
   agentId String?
   agent   User?   @relation("ClientAgent", fields: [agentId], references: [id], onDelete: SetNull)
 
@@ -545,6 +595,10 @@ model Viewing {
   endsAt     DateTime
   status     ViewingStatus @default(SCHEDULED)
   notes      String?
+  /// Booked by the client on the website (needs the agent's confirmation).
+  bookedByClient Boolean   @default(false)
+  /// Message the client left with the booking.
+  clientNote String?
   createdAt  DateTime      @default(now())
   updatedAt  DateTime      @updatedAt
 

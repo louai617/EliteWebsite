@@ -50,6 +50,12 @@ function ViewingChip({ v, agents, viewer }: { v: ViewingItem; agents: AgentOptio
           </div>
           <EnumBadge meta={VIEWING_STATUS_META} value={v.status} />
         </div>
+        {v.bookedByClient && (
+          <p className="rounded bg-amber-50 px-2 py-1 text-xs text-amber-800">
+            Booked on the website{v.status === "SCHEDULED" ? " — confirm it from the actions menu" : ""}
+            {v.clientNote ? <span className="mt-0.5 block italic">“{v.clientNote}”</span> : null}
+          </p>
+        )}
         <Link href={`/properties/${v.property.id}`} className="block hover:underline">
           {v.property.reference} · {v.property.title}
         </Link>

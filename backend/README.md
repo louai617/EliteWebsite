@@ -26,10 +26,10 @@ start without it.
 
 Production: `npm run build && npm start` (apply migrations with `npm run db:deploy`).
 
-| App | Port | What |
-| --- | --- | --- |
-| `backend/` | **3002** | Staff CRM (UI) + REST API (`/api/*`) + database, auth, integrations, scheduler |
-| `frontend/` | **3001** | Public website + client portal; talks to the API only (`NEXT_PUBLIC_API_URL`) |
+| App | Port | Production | What |
+| --- | --- | --- | --- |
+| `backend/` | **3002** | app.eliterealestate.qa | Agent app: staff CRM (UI) + REST API (`/api/*`) + database, auth, integrations, scheduler |
+| `frontend/` | **3001** | eliterealestate.qa | Website + client dashboard; reads all listings from `/api/public/properties` |
 
 Staff who sign in on the website are sent to the CRM; client accounts that open the CRM are
 sent to the portal. On localhost both apps share the session cookie.
@@ -51,8 +51,9 @@ Change these before using real data.
 | --- | --- |
 | `npm run dev` / `build` / `start` | Next.js |
 | `npm run typecheck` / `lint` | `next typegen && tsc`, ESLint |
-| `npm test` | Service test-suites (RBAC, validation, commission, hierarchy, imports, tasks, daily reports & rollover, scoring, client isolation) on a throwaway `test.db` |
+| `npm test` | Service test-suites (RBAC, validation, commission, hierarchy, imports, tasks, daily reports & rollover, scoring, client isolation, public listings, website bookings, saved homes, recommendations) on a throwaway `test.db` |
 | `npm run db:backup` | Online copy of the SQLite database to `backups/` (do this before migrating) |
+| `npm run import:website-listings` | Import the website's former hard-coded listings (`samples/website-listings.json`); idempotent by reference |
 | `npm run cron:daily` | Run the daily rollover once (for a system cron) |
 | `npm run reports:backfill -- 30` | Finalize daily reports for past days that have none |
 | `npm run db:migrate` | `prisma migrate dev` |
@@ -68,7 +69,10 @@ Change these before using real data.
 | `DATABASE_URL` | `file:./dev.db` (SQLite, relative to `backend/`) |
 | `SESSION_SECRET` | ≥ 16 chars; HMAC key for session tokens. **Required in production.** |
 | `NEXT_PUBLIC_BUSINESS_TIMEZONE` | Business time zone (default `Asia/Qatar`); day boundaries for daily tasks/reports. |
-| `CLIENT_APP_URL` | Website origin (default `http://localhost:3001`); CORS default and portal redirect. |
+| `APP_URL` | This app's public origin (production `https://app.eliterealestate.qa`); absolute photo URLs in the public API. Defaults to the request origin. |
+| `CLIENT_APP_URL` | Website origin (default `http://localhost:3001`); CORS default, portal redirect, "view on website" links. |
+| `WEBSITE_REVALIDATE_SECRET` | Shared with the website's `REVALIDATE_SECRET`; enables instant website refresh after property changes. Empty = website refreshes within 60 s. |
+| `WEBSITE_REVALIDATE_URL` | Optional; defaults to `CLIENT_APP_URL/api/revalidate`. |
 | `CORS_ORIGINS` | Optional comma-separated allow-list for browser calls to `/api`. |
 | `CLIENT_PORTAL_URL` | Optional; where CLIENT accounts are sent from the CRM. |
 | `SESSION_COOKIE_SAMESITE` / `SESSION_COOKIE_DOMAIN` | Optional cookie settings for split-domain deployments. |
@@ -199,11 +203,23 @@ Cookie-authenticated writes must come from an allowed origin (CSRF check); CORS 
 | Performance | `GET /performance`, `GET /performance/:agentId`, `GET/PUT/DELETE /performance/scoring` |
 | Imports | `GET/POST /integrations/property-finder`, `GET/POST /integrations/qatar-living`, `GET /migrations`, `GET /migrations/:id` |
 | Client portal | `GET /portal/overview`, `/portal/properties`, `/portal/viewings`, `/portal/leads`, `/portal/tasks`, `/portal/reports`, `/portal/activity`, `/portal/data`, `GET/PATCH /portal/account`, `POST /portal/enquiries` |
-| Public | `POST /public/leads` (website forms & chat; rate-limited, honeypot), `GET /health` |
+| Client dashboard | `GET /portal/bookings/slots?property&date`, `GET/POST /portal/bookings`, `PATCH/DELETE /portal/bookings/:id` (reschedule / cancel with reason), `GET /portal/bookings/:id/calendar` (.ics), `GET/POST /portal/saved`, `DELETE /portal/saved/:ref`, `GET/PUT /portal/preferences`, `GET /portal/recommendations` |
+| Public | `GET /public/properties` (`q`, `purpose`, `category`, `type`, `area`, `beds`, `priceMin`, `priceMax`, `featured`, `sort`, `page`, `pageSize`), `GET /public/properties/:ref` (details, agent card, market data, similar homes), `POST /public/leads` (website forms & chat; rate-limited, honeypot), `GET /health` |
 | Cron | `POST /cron/daily-rollover` (`Authorization: Bearer $CRON_SECRET`) |
 
 The CRM UI itself uses Server Actions over the same service layer; `/api/search` and
 `/api/lookup` serve its pickers.
+
+### Website sync
+
+A property is public when `websitePublished` is on and its status is `AVAILABLE` or
+`RESERVED`; the public endpoints select safe fields only (never owner, commission or internal
+notes). Photos of public listings are served from `/api/uploads/...` without a session; all
+other uploads still need one. Every property, image, deal and import change calls
+`notifyWebsite()` (`src/services/website-sync.ts`, debounced), which POSTs to the website's
+`/api/revalidate`. Publishing records a *Property post* activity (outcome "Website") for the
+agent's daily report. Website bookings are `SCHEDULED` viewings with `bookedByClient`; they
+create a *Confirm website booking* task that confirming the viewing completes.
 
 ## Daily reset (business-day rollover)
 
@@ -269,6 +285,13 @@ startedAt, assignedBy, viewing, clientVisible, daily-task fields) and the new ta
 `ExternalListing`, `ImportRun`, `ImportRecord`. It copies every existing row and backfills:
 commercial categories from the property type, task types from their links, `startedAt` for
 in-progress tasks, `assignedById` and a "created" history event per task. Nothing is deleted.
+
+Migration `20261004093500_website_portal` adds the website fields to `Property`
+(`websitePublished` — on for existing listings, `websitePublishedAt` backfilled from
+`createdAt`, Arabic title/description, exclusive/verified, completion, ownership, amenities,
+highlights, nearby, payment plan …), `Viewing.bookedByClient`/`clientNote`,
+`PropertyInterest.priceAtSave` (backfilled with the current price) and client search
+preferences. Every row is copied; nothing is deleted.
 
 Before migrating a database with real data: `npm run db:backup` (writes `backups/dev-<time>.db`),
 then `npm run db:deploy`. To roll back, stop the server and copy the backup over the database

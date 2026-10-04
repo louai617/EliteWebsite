@@ -1,10 +1,42 @@
 import { z } from "zod";
-import { Furnishing, ListingPurpose, PropertyCategory, PropertyStatus, PropertySubcategory, PropertyType } from "@/generated/prisma/enums";
-import { PROPERTY_CATEGORY_META, PROPERTY_TYPE_META, PROPERTY_TYPES_BY_CATEGORY, categoryForType } from "@/lib/constants";
-import { checkbox, id, money, optionalFloat, optionalId, optionalInt, optionalText, optionalUrl, requiredText } from "./common";
+import { CompletionStatus, Furnishing, ListingPurpose, OwnershipType, PropertyCategory, PropertyStatus, PropertySubcategory, PropertyType } from "@/generated/prisma/enums";
+import { EXTRA_AMENITIES, HIGHLIGHTS, NEARBY_CATEGORIES, PAYMENT_MILESTONES, PROPERTY_CATEGORY_META, PROPERTY_TYPE_META, PROPERTY_TYPES_BY_CATEGORY, categoryForType } from "@/lib/constants";
+import { checkbox, id, money, optionalDate, optionalFloat, optionalId, optionalInt, optionalText, optionalUrl, requiredText } from "./common";
 
 const optionalEnum = <T extends Record<string, string>>(e: T) =>
   z.preprocess((v) => (v === "" || v === undefined ? null : v), z.enum(e).nullable());
+
+/** Accepts an array or its JSON string (database rows), so PATCH merges validate too. */
+const jsonList = <T extends z.ZodType>(item: T, max: number) =>
+  z.preprocess((v) => {
+    if (typeof v === "string") {
+      try {
+        return v ? JSON.parse(v) : [];
+      } catch {
+        return [];
+      }
+    }
+    return v ?? [];
+  }, z.array(item).max(max));
+
+const keyOf = <T extends readonly { value: string }[]>(list: T) => z.enum(list.map((i) => i.value) as [T[number]["value"], ...T[number]["value"][]]);
+
+export const nearbyPlaceSchema = z.object({
+  category: keyOf(NEARBY_CATEGORIES),
+  nameEn: requiredText(120, "Name"),
+  nameAr: z.string().trim().max(120).optional().default(""),
+  minutes: z.coerce.number({ error: "Minutes" }).int().min(1, "1+").max(240),
+  mode: z.enum(["drive", "walk"]),
+});
+export type NearbyPlace = z.output<typeof nearbyPlaceSchema>;
+
+export const paymentMilestoneSchema = z.object({
+  key: keyOf(PAYMENT_MILESTONES),
+  percent: z.coerce.number({ error: "Percent" }).min(1).max(100),
+  timingEn: requiredText(80, "Timing"),
+  timingAr: z.string().trim().max(80).optional().default(""),
+});
+export type PaymentMilestone = z.output<typeof paymentMilestoneSchema>;
 
 const propertyFields = z.object({
   title: requiredText(160, "Title"),
@@ -56,12 +88,36 @@ const propertyFields = z.object({
   seoTitle: optionalText(160),
   seoDescription: optionalText(320),
 
+  // Public website (eliterealestate.qa)
+  /** Shown on the website while available/reserved. Defaults to on for API clients that omit it. */
+  websitePublished: z.preprocess((v) => (v === undefined ? true : v === true || v === "on" || v === "true"), z.boolean()),
+  isExclusive: checkbox,
+  isVerified: checkbox,
+  titleAr: optionalText(160),
+  descriptionAr: optionalText(5000),
+  completionStatus: z.preprocess((v) => (v === "" || v == null ? "READY" : v), z.enum(CompletionStatus)),
+  ownershipType: optionalEnum(OwnershipType),
+  availableFrom: optionalDate,
+  handover: optionalText(60),
+  developer: optionalText(120),
+  serviceChargeSqm: optionalFloat(0, 10_000),
+  plotSqm: optionalFloat(1, 10_000_000),
+  totalFloors: optionalInt(1, 300),
+  amenities: jsonList(keyOf(EXTRA_AMENITIES), 30),
+  highlights: jsonList(keyOf(HIGHLIGHTS), 10),
+  nearby: jsonList(nearbyPlaceSchema, 12),
+  paymentPlan: jsonList(paymentMilestoneSchema, 8),
+
   ownerId: optionalId,
   agentId: optionalId,
 });
 
 /** The property type must belong to the chosen category (e.g. no commercial villas). */
-function refineCategory(value: { type: PropertyType; category?: PropertyCategory }, ctx: z.RefinementCtx) {
+function refineCategory(value: { type: PropertyType; category?: PropertyCategory; paymentPlan?: { percent: number }[] }, ctx: z.RefinementCtx) {
+  if (value.paymentPlan?.length) {
+    const total = value.paymentPlan.reduce((sum, m) => sum + m.percent, 0);
+    if (Math.abs(total - 100) > 0.01) ctx.addIssue({ code: "custom", path: ["paymentPlan"], message: `Payment plan adds up to ${total}% — it must total 100%` });
+  }
   const category = value.category ?? categoryForType(value.type);
   if (!PROPERTY_TYPES_BY_CATEGORY[category].includes(value.type)) {
     ctx.addIssue({

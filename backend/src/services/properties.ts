@@ -3,6 +3,7 @@ import type { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import type { Furnishing, ListingPurpose, PropertyCategory, PropertyStatus, PropertySubcategory, PropertyType } from "@/generated/prisma/enums";
 import { db } from "@/lib/db";
+import { businessDate } from "@/lib/business-day";
 import { conflict, forbidden, invalid, notFound } from "@/lib/errors";
 import { can, canAssignTo, canEditProperty, canSeeOwnerContact, isManager, isStaff, scope, type Actor } from "@/lib/permissions";
 import { paginate, skipTake, type ListParams } from "@/lib/list-params";
@@ -14,6 +15,9 @@ import { onPropertyCreated } from "./automation";
 import { assertActiveUser, assertCanAccess } from "./access";
 import { nextReference } from "./references";
 import { deleteUpload } from "./storage";
+import { notifyWebsite } from "./website-sync";
+import { recordWorkActivity } from "./work-activities";
+import type { Tx } from "./types";
 
 export const PROPERTY_SORTS = ["createdAt", "updatedAt", "price", "areaSqm", "bedrooms", "reference", "title"] as const;
 
@@ -31,6 +35,8 @@ export interface PropertyFilters {
   agentId?: string;
   ownerId?: string;
   featured?: boolean;
+  /** live = shown on the website now; hidden = not shown (unpublished or not available). */
+  website?: "live" | "hidden";
 }
 
 export function propertyWhere(actor: Actor, q: string | undefined, f: PropertyFilters): Prisma.PropertyWhereInput {
@@ -62,6 +68,8 @@ export function propertyWhere(actor: Actor, q: string | undefined, f: PropertyFi
       f.agentId ? (f.agentId === "none" ? { agentId: null } : { agentId: f.agentId }) : {},
       f.ownerId ? { ownerId: f.ownerId } : {},
       f.featured ? { isFeatured: true } : {},
+      f.website === "live" ? { websitePublished: true, status: { in: ["AVAILABLE", "RESERVED"] } } : {},
+      f.website === "hidden" ? { OR: [{ websitePublished: false }, { status: { notIn: ["AVAILABLE", "RESERVED"] } }] } : {},
     ],
   };
 }
@@ -69,6 +77,7 @@ export function propertyWhere(actor: Actor, q: string | undefined, f: PropertyFi
 const listSelect = {
   id: true,
   reference: true,
+  websitePublished: true,
   title: true,
   type: true,
   category: true,
@@ -194,13 +203,36 @@ async function checkRelations(actor: Actor, input: { ownerId: string | null; age
   if (input.ownerId) await assertCanAccess(actor, "owner", input.ownerId);
 }
 
+/** Website lists are stored as JSON text; empty lists as NULL. */
+function toDbFields<T extends { amenities: string[]; highlights: string[]; nearby: unknown[]; paymentPlan: unknown[] }>(input: T) {
+  const json = (list: unknown[]) => (list.length ? JSON.stringify(list) : null);
+  return { ...input, amenities: json(input.amenities), highlights: json(input.highlights), nearby: json(input.nearby), paymentPlan: json(input.paymentPlan) };
+}
+
+/** Publishing a listing on the website counts as posting it (once per listing per day). */
+async function recordWebsitePosting(tx: Tx, property: { id: string; agentId: string | null }, actor: Actor) {
+  const agentId = property.agentId ?? (isStaff(actor) ? actor.id : null);
+  if (!agentId) return;
+  const today = businessDate();
+  await recordWorkActivity(tx, {
+    type: "PROPERTY_POST", agentId, source: "SYSTEM", loggedById: actor.id, propertyId: property.id,
+    outcome: "Website", dedupeKey: `website-post:${property.id}:${today}`,
+  });
+}
+
 export async function createProperty(actor: Actor, input: z.output<typeof propertySchema>) {
-  const data = { ...input, category: input.category ?? categoryForType(input.type), agentId: input.agentId ?? (isManager(actor) ? null : actor.id) };
+  const data = {
+    ...toDbFields(input),
+    category: input.category ?? categoryForType(input.type),
+    agentId: input.agentId ?? (isManager(actor) ? null : actor.id),
+    websitePublishedAt: input.websitePublished ? new Date() : null,
+  };
   await checkRelations(actor, data);
   return db.$transaction(async (tx) => {
     const reference = await nextReference(tx, "property", "ELT");
     const property = await tx.property.create({ data: { ...data, reference }, select: { id: true, reference: true, title: true, agentId: true, ownerId: true } });
     await onPropertyCreated(tx, property, { id: actor.id, staff: isStaff(actor) });
+    if (data.websitePublished) await recordWebsitePosting(tx, property, actor);
     const label = `${property.reference} · ${property.title}`;
     await logActivity(tx, {
       action: "CREATED", entityType: "PROPERTY", entityId: property.id, entityLabel: label,
@@ -214,13 +246,18 @@ export async function createProperty(actor: Actor, input: z.output<typeof proper
       });
     }
     return property;
-  });
+  }).finally(notifyWebsite);
 }
 
 export async function updateProperty(actor: Actor, input: z.output<typeof updatePropertySchema>) {
   const { id, ...fields } = input;
-  const data = { ...fields, category: fields.category ?? categoryForType(fields.type) };
-  const current = await db.property.findUnique({ where: { id }, select: { id: true, reference: true, agentId: true, status: true } });
+  const current = await db.property.findUnique({ where: { id }, select: { id: true, reference: true, agentId: true, status: true, websitePublished: true } });
+  const publishing = Boolean(fields.websitePublished && !current?.websitePublished);
+  const data = {
+    ...toDbFields(fields),
+    category: fields.category ?? categoryForType(fields.type),
+    ...(publishing ? { websitePublishedAt: new Date() } : {}),
+  };
   if (!current) throw notFound("Property");
   if (!canEditProperty(actor, current)) throw forbidden("You can only edit listings assigned to you.");
   if (!isManager(actor) && data.agentId !== current.agentId) throw forbidden("Only managers can reassign listings.");
@@ -230,6 +267,13 @@ export async function updateProperty(actor: Actor, input: z.output<typeof update
     const property = await tx.property.update({ where: { id }, data, select: { id: true, reference: true, title: true, agentId: true, ownerId: true, status: true } });
     const label = `${property.reference} · ${property.title}`;
     const links = { propertyId: id, ownerId: property.ownerId };
+    if (publishing) await recordWebsitePosting(tx, property, actor);
+    if (current.websitePublished !== data.websitePublished) {
+      await logActivity(tx, {
+        action: "UPDATED", entityType: "PROPERTY", entityId: id, entityLabel: label, userId: actor.id, ...links,
+        description: data.websitePublished ? `Published ${property.reference} on the website` : `Removed ${property.reference} from the website`,
+      });
+    }
     if (current.status !== property.status) {
       await logActivity(tx, {
         action: "STATUS_CHANGED", entityType: "PROPERTY", entityId: id, entityLabel: label, userId: actor.id, ...links,
@@ -246,7 +290,7 @@ export async function updateProperty(actor: Actor, input: z.output<typeof update
     }
     await logActivity(tx, { action: "UPDATED", entityType: "PROPERTY", entityId: id, entityLabel: label, description: `Updated ${label}`, userId: actor.id, ...links });
     return property;
-  });
+  }).finally(notifyWebsite);
 }
 
 export async function setPropertyStatus(actor: Actor, id: string, status: PropertyStatus) {
@@ -262,7 +306,7 @@ export async function setPropertyStatus(actor: Actor, id: string, status: Proper
       userId: actor.id, propertyId: id, ownerId: current.ownerId, meta: { from: current.status, to: status },
     });
     return property;
-  });
+  }).finally(notifyWebsite);
 }
 
 export async function deleteProperty(actor: Actor, id: string) {
@@ -283,6 +327,7 @@ export async function deleteProperty(actor: Actor, id: string) {
     });
   });
   await Promise.all(property.images.map((img) => deleteUpload(img.url)));
+  notifyWebsite();
 }
 
 // ─── Images ───
@@ -306,7 +351,7 @@ export async function addPropertyImage(actor: Actor, propertyId: string, url: st
       description: `Added a photo to ${property.reference}`, userId: actor.id, propertyId,
     });
     return image;
-  });
+  }).finally(notifyWebsite);
 }
 
 export async function removePropertyImage(actor: Actor, imageId: string) {
@@ -321,6 +366,7 @@ export async function removePropertyImage(actor: Actor, imageId: string) {
     }
   });
   await deleteUpload(image.url);
+  notifyWebsite();
 }
 
 export async function setPrimaryImage(actor: Actor, imageId: string) {
@@ -331,6 +377,7 @@ export async function setPrimaryImage(actor: Actor, imageId: string) {
     db.propertyImage.updateMany({ where: { propertyId: image.propertyId }, data: { isPrimary: false } }),
     db.propertyImage.update({ where: { id: imageId }, data: { isPrimary: true } }),
   ]);
+  notifyWebsite();
 }
 
 export async function reorderImages(actor: Actor, propertyId: string, imageIds: string[]) {
@@ -339,4 +386,5 @@ export async function reorderImages(actor: Actor, propertyId: string, imageIds: 
   const known = new Set(existing.map((i) => i.id));
   if (imageIds.length !== known.size || imageIds.some((id) => !known.has(id))) throw invalid("The photo list is out of date. Refresh and try again.");
   await db.$transaction(imageIds.map((id, index) => db.propertyImage.update({ where: { id }, data: { sortOrder: index } })));
+  notifyWebsite();
 }

@@ -1,9 +1,9 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useLocale } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
@@ -28,9 +28,10 @@ const registerSchema = z.object({
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
-export default function RegisterPage() {
+function RegisterForm() {
   const locale = useLocale();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { register: signup } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -49,7 +50,8 @@ export default function RegisterPage() {
     setError(null);
     try {
       await signup(data);
-      router.push(`/${locale}/dashboard`);
+      const next = searchParams.get('next');
+      router.push(next && next.startsWith(`/${locale}/`) && !next.startsWith('//') ? next : `/${locale}/dashboard`);
     } catch (err) {
       if (err instanceof ApiError && err.fields) {
         for (const [field, messages] of Object.entries(err.fields)) {
@@ -184,5 +186,14 @@ export default function RegisterPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function RegisterPage() {
+  // useSearchParams (?next=) needs a Suspense boundary for static rendering.
+  return (
+    <Suspense>
+      <RegisterForm />
+    </Suspense>
   );
 }

@@ -32,6 +32,7 @@ import {
   type WorkActivityType,
 } from "../src/generated/prisma/client";
 import { calculateCommission } from "../src/lib/commission";
+import { importWebsiteListings } from "./website-listings";
 
 if (process.env.NODE_ENV === "production") {
   throw new Error("Refusing to run the development seed with NODE_ENV=production.");
@@ -646,6 +647,9 @@ async function main() {
       log("COMPLETED", "TASK", task.id, task.title, `Completed task “${task.title}”`, assignee.id, dueDate, { taskId: task.id, leadId: lead?.id, propertyId: property?.id });
     }
   }
+
+  // ─── Former website listings (the CRM is the single source of truth for the website) ───
+  await importWebsiteListings(db, { fallbackAgentIds: agents.map((a) => a.id), log: () => undefined });
 
   // ─── Lead response tasks (what the CRM creates when a lead is assigned) ───
   for (const lead of leads.filter((l) => l.status === "NEW" && l.agentId)) {

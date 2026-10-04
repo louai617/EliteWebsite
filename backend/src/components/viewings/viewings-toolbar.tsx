@@ -15,7 +15,7 @@ export function ViewingsToolbar({ agents, viewer, view }: { agents: AgentOption[
       <FilterSelect param="status" label="Status" options={options(VIEWING_STATUS_META)} />
       {viewer.isManager && <FilterSelect param="agent" label="Agent" options={agents.map((a) => ({ value: a.id, label: a.name }))} />}
       {view === "list" && <DateRangeFilter label="Date" />}
-      {view === "list" && <FilterSelect param="when" label="Show" options={[{ value: "upcoming", label: "Upcoming only" }]} />}
+      {view === "list" && <FilterSelect param="when" label="Show" options={[{ value: "upcoming", label: "Upcoming only" }, { value: "confirm", label: "Website bookings to confirm" }]} />}
       <ClearFilters params={["q", "status", "agent", "from", "to", "when"]} keep={["view", "month"]} />
       <div className="ml-auto flex rounded-md border bg-card p-0.5 shadow-xs" role="group" aria-label="View">
         {(["calendar", "list"] as const).map((v) => (

@@ -3,6 +3,8 @@
  * (the generated `enums` module is plain objects with no server code).
  */
 import {
+  CompletionStatus,
+  OwnershipType,
   CustomerType,
   DealStatus,
   DealType,
@@ -307,6 +309,73 @@ export const AMENITIES = [
 
 export type AmenityKey = (typeof AMENITIES)[number]["key"];
 
+// ───────────── Public website vocabulary (keys match the website's translations) ─────────────
+
+/** Amenity flag → website amenity key, so flags show up on the website automatically. */
+export const AMENITY_FLAG_WEBSITE_KEY: Partial<Record<AmenityKey, string>> = {
+  hasBalcony: "balcony",
+  hasMaidRoom: "maid_room",
+  hasPool: "shared_pool",
+  hasGym: "shared_gym",
+  hasSeaView: "sea_view",
+  hasGarden: "private_garden",
+  hasBbq: "barbecue_area",
+  hasSecurity: "security",
+  hasCentralAc: "central_ac",
+};
+
+/** Website amenities not covered by the flags above. */
+export const EXTRA_AMENITIES = [
+  { value: "built_in_wardrobes", label: "Built-in wardrobes" },
+  { value: "walk_in_closet", label: "Walk-in closet" },
+  { value: "covered_parking", label: "Covered parking" },
+  { value: "private_pool", label: "Private pool" },
+  { value: "concierge", label: "Concierge" },
+  { value: "kitchen_appliances", label: "Kitchen appliances" },
+  { value: "pets_allowed", label: "Pets allowed" },
+  { value: "beach_access", label: "Beach access" },
+  { value: "study", label: "Study" },
+  { value: "private_lift", label: "Private lift" },
+  { value: "cinema_room", label: "Cinema room" },
+] as const;
+
+export const HIGHLIGHTS = [
+  { value: "corner_unit", label: "Corner unit" },
+  { value: "marina_view", label: "Marina view" },
+  { value: "upper_floor", label: "Upper floor" },
+  { value: "title_deed", label: "Title deed ready" },
+  { value: "corner_plot", label: "Corner plot" },
+  { value: "brand_new", label: "Brand new" },
+  { value: "private_pool_hl", label: "Private pool" },
+  { value: "full_floor", label: "Full floor" },
+  { value: "payment_plan_hl", label: "Payment plan" },
+  { value: "private_lift_hl", label: "Private lift" },
+] as const;
+
+export const NEARBY_CATEGORIES = [
+  { value: "school", label: "School" },
+  { value: "mall", label: "Mall" },
+  { value: "beach", label: "Beach" },
+  { value: "airport", label: "Airport" },
+  { value: "hospital", label: "Hospital" },
+  { value: "metro", label: "Metro" },
+  { value: "landmark", label: "Landmark" },
+] as const;
+
+export const PAYMENT_MILESTONES = [
+  { value: "booking", label: "On booking" },
+  { value: "construction", label: "During construction" },
+  { value: "handover", label: "On handover" },
+  { value: "post_handover", label: "Post-handover" },
+] as const;
+
+export const COMPLETION_META: MetaMap<CompletionStatus> = {
+  READY: { label: "Ready", tone: "green" },
+  OFF_PLAN: { label: "Off-plan", tone: "amber" },
+};
+
+export const OWNERSHIP_META = labelsOnly<OwnershipType>({ FREEHOLD: "Freehold", LEASEHOLD: "Leasehold", USUFRUCT: "Usufruct" });
+
 /** Suggested Doha districts (free text is still allowed). */
 export const QATAR_AREAS = [
   "The Pearl",
@@ -337,3 +406,40 @@ export function options<T extends string>(meta: MetaMap<T>) {
 
 export const PAGE_SIZES = [10, 20, 50] as const;
 export const DEFAULT_PAGE_SIZE = 20;
+
+/** Arabic names for areas/cities shown on the bilingual website (falls back to English). */
+export const AREA_NAMES_AR: Record<string, string> = {
+  Doha: "الدوحة",
+  Qatar: "قطر",
+  "The Pearl": "اللؤلؤة",
+  "The Pearl-Qatar": "اللؤلؤة",
+  "Porto Arabia": "بورتو أرابيا",
+  "Qanat Quartier": "قناة كوارتيير",
+  Lusail: "لوسيل",
+  "Lusail City": "مدينة لوسيل",
+  "West Bay": "الخليج الغربي",
+  "West Bay Lagoon": "لاغونا الخليج الغربي",
+  Msheireb: "مشيرب",
+  "Al Sadd": "السد",
+  "Al Nasr": "النصر",
+  "Al Waab": "الوعب",
+  "Ain Khaled": "عين خالد",
+  "Old Airport": "المطار القديم",
+  "Al Dafna": "الدفنة",
+  "Al Hilal": "الهلال",
+  "Al Mansoura": "المنصورة",
+  "Bin Mahmoud": "بن محمود",
+  "Fereej Bin Omran": "فريج بن عمران",
+  "Al Gharrafa": "الغرافة",
+  "Al Rayyan": "الريان",
+  "Madinat Khalifa": "مدينة خليفة",
+  "Umm Salal": "أم صلال",
+  "Al Wakrah": "الوكرة",
+  "Al Khor": "الخور",
+  "Salwa Road": "طريق سلوى",
+  "Al Duhail": "الدحيل",
+  "Al Thumama": "الثمامة",
+  "Al Aziziya": "العزيزية",
+  "Al Muntazah": "المنتزه",
+  "Al Kheesa": "الخيسة",
+};

@@ -5,8 +5,8 @@ import { useTranslations } from 'next-intl';
 import { Phone, MessageSquare } from 'lucide-react';
 
 interface StickyContactBarProps {
-  phone: string;
-  whatsapp: string;
+  phone: string | null;
+  whatsapp: string | null;
   price: string;
   shareTitle: string;
 }
@@ -41,6 +41,7 @@ export default function StickyContactBar({
     >
       <div className="flex items-center gap-3">
         <p className="min-w-0 flex-1 truncate text-lg font-bold text-secondary">{price}</p>
+        {phone && (
         <a
           href={`tel:${phone.replace(/\s+/g, '')}`}
           tabIndex={visible ? 0 : -1}
@@ -49,6 +50,8 @@ export default function StickyContactBar({
           <Phone className="h-4 w-4" aria-hidden="true" />
           {t('call')}
         </a>
+        )}
+        {whatsapp && (
         <a
           href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(shareTitle)}`}
           target="_blank"
@@ -59,6 +62,7 @@ export default function StickyContactBar({
           <MessageSquare className="h-4 w-4" aria-hidden="true" />
           <span className="sr-only sm:not-sr-only">{t('whatsapp')}</span>
         </a>
+        )}
       </div>
     </div>
   );

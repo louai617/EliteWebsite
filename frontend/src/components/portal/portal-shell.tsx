@@ -4,13 +4,16 @@ import React, { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useLocale } from 'next-intl';
-import { Activity, BarChart3, Building2, CheckSquare, FileDown, LayoutDashboard, LogOut, MessageSquare, UserCircle } from 'lucide-react';
+import { Activity, BarChart3, CalendarDays, CheckSquare, FileDown, Heart, LayoutDashboard, LogOut, MessageSquare, SlidersHorizontal, Sparkles, UserCircle } from 'lucide-react';
 import { crmHome, useAuth } from '@/lib/AuthContext';
 import { cn, Loading } from './ui';
 
 const NAV = [
   { href: '', label: 'Overview', icon: LayoutDashboard },
-  { href: '/properties', label: 'Properties', icon: Building2 },
+  { href: '/bookings', label: 'Bookings', icon: CalendarDays },
+  { href: '/saved', label: 'Saved homes', icon: Heart },
+  { href: '/for-you', label: 'For you', icon: Sparkles },
+  { href: '/preferences', label: 'Preferences', icon: SlidersHorizontal },
   { href: '/leads', label: 'Enquiries', icon: MessageSquare },
   { href: '/tasks', label: 'Tasks', icon: CheckSquare },
   { href: '/reports', label: 'Reports', icon: BarChart3 },

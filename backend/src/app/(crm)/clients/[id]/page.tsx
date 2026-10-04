@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { PROPERTY_TYPE_META } from "@/lib/constants";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { Mail, Phone } from "lucide-react";
@@ -49,6 +50,15 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
     portalAccessFor(id),
   ]);
   const clientOption = { id: client.id, label: client.fullName };
+  const listOf = (json: string | null): string[] => {
+    try {
+      const v = json ? JSON.parse(json) : [];
+      return Array.isArray(v) ? v.map(String) : [];
+    } catch {
+      return [];
+    }
+  };
+  const priceDrops = client.interests.filter((i) => i.priceAtSave && i.property.price < i.priceAtSave).length;
   const firstProperty = client.interests[0]?.property;
   const propertyOption = firstProperty ? { id: firstProperty.id, label: `${firstProperty.reference} · ${firstProperty.title}` } : null;
   const wonValue = client.deals.filter((d) => d.status === "CLOSED_WON").reduce((sum, d) => sum + d.amount, 0);
@@ -182,6 +192,27 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
         </div>
 
         <aside className="space-y-5">
+          <Card>
+            <CardHeader>
+              <CardTitle>Website preferences</CardTitle>
+              <span className="text-xs text-muted-foreground">Set by the client on eliterealestate.qa</span>
+            </CardHeader>
+            <CardContent className="space-y-3">
+              <InfoList
+                columns={1}
+                items={[
+                  { label: "Looking to", value: client.preferredPurpose ? (client.preferredPurpose === "RENT" ? "Rent" : "Buy") : null },
+                  { label: "Property types", value: listOf(client.preferredTypes).map((t) => PROPERTY_TYPE_META[t as keyof typeof PROPERTY_TYPE_META]?.label ?? t).join(", ") || null },
+                  { label: "Areas", value: listOf(client.preferredAreas).join(", ") || null },
+                  { label: "Bedrooms", value: client.preferredBedrooms == null ? null : client.preferredBedrooms === 0 ? "Studio+" : `${client.preferredBedrooms}+` },
+                ]}
+              />
+              <p className="text-xs text-muted-foreground">
+                {client.interests.length} saved home{client.interests.length === 1 ? "" : "s"}
+                {priceDrops > 0 ? ` · ${priceDrops} with a price drop since saved` : ""} · {client.viewings.filter((v) => v.bookedByClient).length} booked online
+              </p>
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader>
               <CardTitle>Client portal</CardTitle>

@@ -52,7 +52,8 @@ export interface PortalViewing {
   id: string;
   startsAt: string;
   endsAt: string;
-  status: 'SCHEDULED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+  status: 'SCHEDULED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+  bookedByClient?: boolean;
   agent: AgentContact | null;
   property: PortalProperty;
 }
@@ -69,8 +70,9 @@ export interface PortalOverview {
     requirements: string | null;
     agent: AgentContact | null;
   };
-  counts: { shortlisted: number; upcomingViewings: number; activeDeals: number; openEnquiries: number; openTasks: number };
+  counts: { shortlisted: number; upcomingViewings: number; activeDeals: number; openEnquiries: number; openTasks: number; priceDrops: number };
   upcomingViewings: PortalViewing[];
+  journey: { steps: string[]; current: number; complete?: boolean };
 }
 
 export interface PortalLead {
@@ -123,4 +125,49 @@ export interface PortalActivityItem {
   kind: 'viewing' | 'deal' | 'shortlist' | 'enquiry' | 'task';
   at: string;
   text: string;
+}
+
+/** Listing card as returned by the public API / portal (see lib/listing-types for the full shape). */
+export type { ListingCard } from './listing-types';
+import type { ListingCard } from './listing-types';
+
+export interface Booking {
+  id: string;
+  startsAt: string;
+  endsAt: string;
+  status: 'SCHEDULED' | 'CONFIRMED' | 'COMPLETED' | 'CANCELLED' | 'NO_SHOW';
+  awaitingConfirmation: boolean;
+  bookedOnline: boolean;
+  note: string | null;
+  upcoming: boolean;
+  canChange: boolean;
+  agent: { name: string; phone: string | null; email: string; photo: string | null; whatsapp: string | null } | null;
+  address: string;
+  directionsUrl: string;
+  property: ListingCard;
+}
+
+export interface SavedHome {
+  savedAt: string;
+  priceAtSave: number | null;
+  priceChangePercent: number;
+  live: boolean;
+  property: ListingCard;
+}
+
+export interface Recommendation {
+  matchPercent: number | null;
+  reasons: string[];
+  property: ListingCard;
+}
+
+export interface Preferences {
+  purpose: 'SALE' | 'RENT' | null;
+  types: string[];
+  areas: string[];
+  bedrooms: number | null;
+  budgetMin: number | null;
+  budgetMax: number | null;
+  requirements: string | null;
+  options: { areas: string[]; types: { value: string; label: string }[] };
 }

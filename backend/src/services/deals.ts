@@ -12,6 +12,7 @@ import { paginate, skipTake, type ListParams } from "@/lib/list-params";
 import { like } from "@/lib/search";
 import type { dealSchema, updateDealSchema } from "@/schemas/deal";
 import { logActivity } from "./activity";
+import { notifyWebsite } from "./website-sync";
 import { onDealWon } from "./automation";
 import { assertActiveUser, assertRelated } from "./access";
 import { nextReference } from "./references";
@@ -117,6 +118,7 @@ async function syncSideEffects(tx: Tx, actor: Actor, deal: { id: string; referen
     const to = deal.type === "RENTAL" ? "RENTED" : "SOLD";
     if (property.status !== to) {
       await tx.property.update({ where: { id: deal.propertyId }, data: { status: to } });
+      notifyWebsite();
       await logActivity(tx, {
         action: "STATUS_CHANGED", entityType: "PROPERTY", entityId: deal.propertyId, entityLabel: propertyLabel, userId: actor.id,
         description: `${property.reference} marked ${to === "RENTED" ? "Rented" : "Sold"} after ${deal.reference} closed`, propertyId: deal.propertyId, dealId: deal.id,
@@ -135,6 +137,7 @@ async function syncSideEffects(tx: Tx, actor: Actor, deal: { id: string; referen
     }
   } else if ((deal.status === "CONTRACT_PENDING" || deal.status === "CONTRACT_SIGNED") && property.status === "AVAILABLE") {
     await tx.property.update({ where: { id: deal.propertyId }, data: { status: "RESERVED" } });
+    notifyWebsite();
     await logActivity(tx, {
       action: "STATUS_CHANGED", entityType: "PROPERTY", entityId: deal.propertyId, entityLabel: propertyLabel, userId: actor.id,
       description: `${property.reference} reserved for ${deal.reference}`, propertyId: deal.propertyId, dealId: deal.id, meta: { from: "AVAILABLE", to: "RESERVED" },

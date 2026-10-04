@@ -8,11 +8,8 @@ import {
   Plane, Stethoscope, TrainFront, Landmark, Layers, Hammer, Wallet, Ruler,
 } from 'lucide-react';
 
-import {
-  properties, getPropertyById, getSimilarProperties,
-  pricePerSqm, priceVsMarket, sizeVsMarket,
-  type Property, type NearbyPlace,
-} from '@/data/properties';
+import { getListing, pricePerSqm, deltaPercent, type ListingCard, type NearbyPlace } from '@/lib/listings';
+import { company } from '@/data/company';
 
 import PropertyGallery from '@/components/properties/detail/PropertyGallery';
 import PropertyNav from '@/components/properties/detail/PropertyNav';
@@ -28,25 +25,15 @@ import PropertyCard from '@/components/properties/PropertyCard';
 
 type PageParams = { locale: string; id: string };
 
-export function generateStaticParams() {
-  return properties.map((property) => ({ id: property._id }));
-}
-
-/**
- * The listing set is a known, finite list, so anything outside it is a genuine
- * 404. Without this, an unknown id streams a 200 response before `notFound()`
- * can influence the status code.
- */
-export const dynamicParams = false;
-
+/** Listings come from the CRM and are rendered on demand (cached, refreshed when agents edit). */
 export async function generateMetadata({ params }: { params: Promise<PageParams> }) {
   const { locale, id } = await params;
-  const property = getPropertyById(id);
+  const property = await getListing(decodeURIComponent(id));
   if (!property) return { title: 'Property not found' };
 
   const isRtl = locale === 'ar';
-  const title = isRtl ? property.title_ar : property.title_en;
-  const description = (isRtl ? property.description_ar : property.description_en)
+  const title = (!isRtl && property.seo_title) || (isRtl ? property.title_ar : property.title_en);
+  const description = ((!isRtl && property.seo_description) || (isRtl ? property.description_ar : property.description_en) || '')
     .split('\n\n')[0]
     .slice(0, 160);
 
@@ -56,7 +43,7 @@ export async function generateMetadata({ params }: { params: Promise<PageParams>
     openGraph: {
       title,
       description,
-      images: [{ url: property.images[0], width: 1200, height: 630, alt: title }],
+      images: property.images[0] ? [{ url: property.images[0], width: 1200, height: 630, alt: title }] : [],
     },
   };
 }
@@ -120,8 +107,10 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
   const { locale, id } = await params;
   setRequestLocale(locale);
 
-  const property = getPropertyById(id);
-  if (!property) notFound();
+  const property = await getListing(decodeURIComponent(id));
+  if (property === undefined) notFound();
+  // CRM unreachable: let the error boundary show a friendly retry page.
+  if (property === null) throw new Error('Listings are temporarily unavailable');
 
   const t = await getTranslations({ locale, namespace: 'property' });
   const tCommon = await getTranslations({ locale, namespace: 'common' });
@@ -133,7 +122,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
   const city = isRtl ? property.location.city_ar : property.location.city_en;
   const community = isRtl ? property.location.community_ar : property.location.community_en;
   const address = isRtl ? property.location.address_ar : property.location.address_en;
-  const developer = isRtl ? property.developer_ar : property.developer_en;
+  const developer = property.developer;
 
   const priceLabel = `${property.price.toLocaleString()} ${property.currency}`;
   const frequencySuffix = property.price_frequency
@@ -145,24 +134,33 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
     ? t('trends_axis_rent')
     : t('trends_axis');
 
-  const priceDelta = priceVsMarket(property);
-  const sizeDelta = sizeVsMarket(property);
-  const similar = getSimilarProperties(property._id);
+  const market = property.market;
+  const perSqm = pricePerSqm(property);
+  const priceDelta = deltaPercent(property.price, market?.avg_price);
+  const sizeDelta = deltaPercent(property.area_sqm, market?.avg_size_sqm);
+  const similar = property.similar;
+  const typeLabel = t(`type_${property.type}`);
 
-  const mapsHref = `https://www.google.com/maps/search/?api=1&query=${property.location.lat},${property.location.lng}`;
+  const hasCoords = property.location.lat != null && property.location.lng != null;
+  const mapsHref = hasCoords
+    ? `https://www.google.com/maps/search/?api=1&query=${property.location.lat},${property.location.lng}`
+    : `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(property.location.address_en)}`;
 
   // Rentals get neither a mortgage calculator nor a construction payment plan,
   // so the section — and its nav entry — drop out entirely.
   const showPayment = property.purpose === 'sale';
+  // Market data is computed from real CRM inventory; sections without data are hidden.
+  const showTrends = Boolean(market);
+  const showAmenities = property.amenities.length > 0;
 
   const sections = [
     { id: 'overview', labelKey: 'nav_overview' },
     { id: 'details', labelKey: 'nav_details' },
-    { id: 'amenities', labelKey: 'nav_amenities' },
-    { id: 'trends', labelKey: 'nav_trends' },
+    ...(showAmenities ? [{ id: 'amenities', labelKey: 'nav_amenities' }] : []),
+    ...(showTrends ? [{ id: 'trends', labelKey: 'nav_trends' }] : []),
     { id: 'location', labelKey: 'nav_location' },
     ...(showPayment ? [{ id: 'payment', labelKey: 'nav_payment' }] : []),
-    { id: 'similar', labelKey: 'nav_similar' },
+    ...(similar.length ? [{ id: 'similar', labelKey: 'nav_similar' }] : []),
   ];
 
   // Structured data so listings surface correctly in search results.
@@ -171,9 +169,9 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
     '@type': 'RealEstateListing',
     name: title,
     description: description.split('\n\n')[0],
-    url: `https://elitere.qa/${locale}/properties/${property._id}`,
+    url: `${process.env.NEXT_PUBLIC_SITE_URL || 'https://eliterealestate.qa'}/${locale}/properties/${property._id}`,
     image: property.images.slice(0, 5),
-    datePosted: new Date(Date.now() - property.listed_days_ago * 86_400_000).toISOString(),
+    datePosted: property.listed_at,
     offers: {
       '@type': 'Offer',
       price: property.price,
@@ -186,14 +184,10 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
       addressLocality: city,
       addressCountry: 'QA',
     },
-    geo: {
-      '@type': 'GeoCoordinates',
-      latitude: property.location.lat,
-      longitude: property.location.lng,
-    },
-    numberOfBedrooms: property.bedrooms,
-    numberOfBathroomsTotal: property.bathrooms,
-    floorSize: { '@type': 'QuantitativeValue', value: property.area_sqm, unitCode: 'MTK' },
+    ...(hasCoords ? { geo: { '@type': 'GeoCoordinates', latitude: property.location.lat, longitude: property.location.lng } } : {}),
+    ...(property.bedrooms != null ? { numberOfBedrooms: property.bedrooms } : {}),
+    ...(property.bathrooms != null ? { numberOfBathroomsTotal: property.bathrooms } : {}),
+    ...(property.area_sqm ? { floorSize: { '@type': 'QuantitativeValue', value: property.area_sqm, unitCode: 'MTK' } } : {}),
   };
 
   return (
@@ -274,26 +268,28 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                 <span className="text-lg font-medium text-gray-400">{frequencySuffix}</span>
               )}
             </p>
-            <p className="mt-1 text-sm text-gray-400">
-              {t('price_per_sqm')} · {pricePerSqm(property).toLocaleString()} {perSqmUnit}
-            </p>
+            {perSqm && (
+              <p className="mt-1 text-sm text-gray-400">
+                {t('price_per_sqm')} · {perSqm.toLocaleString()} {perSqmUnit}
+              </p>
+            )}
           </div>
         </header>
 
         {/* Key facts strip */}
         <dl className="mt-6 grid grid-cols-2 gap-px overflow-hidden rounded-2xl border border-gray-100 bg-gray-100 sm:grid-cols-4">
           {[
-            { icon: Bed, label: t('beds'), value: String(property.bedrooms) },
-            { icon: Bath, label: t('baths'), value: String(property.bathrooms) },
+            { icon: Bed, label: t('beds'), value: property.bedrooms === 0 ? t('studio') : property.bedrooms != null ? String(property.bedrooms) : '—' },
+            { icon: Bath, label: t('baths'), value: property.bathrooms != null ? String(property.bathrooms) : '—' },
             {
               icon: Maximize,
               label: t('area'),
-              value: `${property.area_sqm} ${tCommon('sqm')}`,
+              value: property.area_sqm ? `${property.area_sqm} ${tCommon('sqm')}` : '—',
             },
             {
               icon: Building2,
               label: t('property_type'),
-              value: t(`type_${property.type}`),
+              value: typeLabel,
             },
           ].map((fact) => (
             <div key={fact.label} className="flex items-center gap-3 bg-white px-4 py-4">
@@ -324,18 +320,20 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                   ))}
                 </ul>
               )}
-              <ExpandableText text={description} />
+              {description && <ExpandableText text={description} />}
             </Section>
 
             <Section id="details" title={t('property_details')}>
               <dl className="grid gap-x-10 sm:grid-cols-2">
-                <DetailRow icon={Building2} label={t('property_type')} value={t(`type_${property.type}`)} />
-                <DetailRow icon={Layers} label={t('furnishing')} value={t(`furnishing_${property.furnishing}`)} />
-                <DetailRow
-                  icon={Maximize}
-                  label={t('area')}
-                  value={`${property.area_sqm} ${tCommon('sqm')}`}
-                />
+                <DetailRow icon={Building2} label={t('property_type')} value={typeLabel} />
+                {property.furnishing && <DetailRow icon={Layers} label={t('furnishing')} value={t(`furnishing_${property.furnishing}`)} />}
+                {property.area_sqm && (
+                  <DetailRow
+                    icon={Maximize}
+                    label={t('area')}
+                    value={`${property.area_sqm} ${tCommon('sqm')}`}
+                  />
+                )}
                 {property.plot_sqm && (
                   <DetailRow
                     icon={Ruler}
@@ -343,7 +341,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                     value={`${property.plot_sqm} ${tCommon('sqm')}`}
                   />
                 )}
-                {property.floor && property.total_floors && (
+                {property.floor != null && property.total_floors != null && (
                   <DetailRow
                     icon={Layers}
                     label={t('floor_level')}
@@ -363,16 +361,18 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                 {property.handover && (
                   <DetailRow icon={CalendarDays} label={t('handover')} value={property.handover} />
                 )}
-                <DetailRow icon={Key} label={t('ownership')} value={t(`ownership_${property.ownership}`)} />
-                <DetailRow
-                  icon={CalendarDays}
-                  label={t('available_from')}
-                  value={new Date(property.available_from).toLocaleDateString(locale, {
-                    day: 'numeric',
-                    month: 'short',
-                    year: 'numeric',
-                  })}
-                />
+                {property.ownership && <DetailRow icon={Key} label={t('ownership')} value={t(`ownership_${property.ownership}`)} />}
+                {property.available_from && (
+                  <DetailRow
+                    icon={CalendarDays}
+                    label={t('available_from')}
+                    value={new Date(property.available_from).toLocaleDateString(locale, {
+                      day: 'numeric',
+                      month: 'short',
+                      year: 'numeric',
+                    })}
+                  />
+                )}
                 {property.year_built && (
                   <DetailRow icon={Hammer} label={t('year_built')} value={String(property.year_built)} />
                 )}
@@ -387,33 +387,39 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
               </dl>
             </Section>
 
+            {showAmenities && (
             <Section id="amenities" title={tCommon('amenities')}>
               <AmenitiesGrid amenities={property.amenities} />
             </Section>
+            )}
 
+            {market && (
             <Section id="trends" title={t('trends_title')}>
               <p className="-mt-2 mb-6 text-sm text-gray-500">
                 {t('trends_subtitle', {
-                  beds: property.bedrooms,
-                  type: t(`type_${property.type}`).toLowerCase(),
-                  community,
+                  beds: property.bedrooms ?? 0,
+                  type: typeLabel.toLowerCase(),
+                  community: area,
                   city,
                 })}
               </p>
 
-              <div className="rounded-2xl border border-gray-100 p-5 md:p-6">
-                <PriceTrendsChart
-                  history={property.market.price_history}
-                  communityLabel={community}
-                  cityLabel={t('trends_city', { city })}
-                  axisLabel={perSqmUnit}
-                />
-              </div>
+              {market.price_history.length >= 3 && (
+                <div className="rounded-2xl border border-gray-100 p-5 md:p-6">
+                  <PriceTrendsChart
+                    history={market.price_history}
+                    communityLabel={area}
+                    cityLabel={t('trends_city', { city })}
+                    axisLabel={perSqmUnit}
+                  />
+                </div>
+              )}
 
               <h3 className="mb-4 mt-8 text-base font-bold text-secondary">
                 {t('comparison_title')}
               </h3>
               <div className="grid gap-4 sm:grid-cols-2">
+                {priceDelta != null && (
                 <MarketComparison
                   label={
                     priceDelta > 0
@@ -423,12 +429,14 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                         : t('costs_same')
                   }
                   value={property.price}
-                  average={property.market.avg_price}
+                  average={market.avg_price}
                   delta={priceDelta}
                   unit={property.currency}
                   thisLabel={t('this_property')}
                   averageLabel={t('community_average')}
                 />
+                )}
+                {sizeDelta != null && property.area_sqm && market.avg_size_sqm && (
                 <MarketComparison
                   label={
                     sizeDelta > 0
@@ -438,14 +446,16 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                         : t('is_same_size')
                   }
                   value={property.area_sqm}
-                  average={property.market.avg_size_sqm}
+                  average={market.avg_size_sqm}
                   delta={sizeDelta}
                   unit={tCommon('sqm')}
                   thisLabel={t('this_property')}
                   averageLabel={t('community_average')}
                 />
+                )}
               </div>
             </Section>
+            )}
 
             <Section id="location" title={t('location_title')}>
               <p className="-mt-2 mb-5 flex items-center gap-1.5 text-sm text-gray-500">
@@ -483,6 +493,8 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                 </div>
               </div>
 
+              {property.nearby.length > 0 && (
+              <>
               <h3 className="mb-4 text-base font-bold text-secondary">{t('nearby_title')}</h3>
               <ul className="grid gap-3 sm:grid-cols-2">
                 {property.nearby.map((place) => {
@@ -510,39 +522,43 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                   );
                 })}
               </ul>
+              </>
+              )}
 
-              {/* Community snapshot */}
+              {/* Community snapshot — live figures from the CRM inventory */}
+              {market && (
               <div className="mt-8 rounded-2xl bg-gray-50 p-6">
                 <h3 className="mb-4 text-base font-bold text-secondary">
-                  {t('community_title', { community })}
+                  {t('community_title', { community: area })}
                 </h3>
                 <dl className="grid grid-cols-3 gap-4">
                   <div>
                     <dt className="text-xs text-gray-500">{t('community_buildings')}</dt>
                     <dd className="mt-1 text-xl font-bold text-secondary">
-                      {property.market.community_buildings}
+                      {market.community_buildings}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-xs text-gray-500">{t('community_listings')}</dt>
                     <dd className="mt-1 text-xl font-bold text-secondary">
-                      {property.market.community_listings.toLocaleString()}
+                      {market.community_listings.toLocaleString()}
                     </dd>
                   </div>
                   <div>
                     <dt className="text-xs text-gray-500">{t('community_avg_price')}</dt>
                     <dd className="mt-1 text-xl font-bold text-secondary">
-                      {(property.market.avg_price / 1_000_000).toFixed(1)}M
+                      {market.avg_price >= 1_000_000 ? `${(market.avg_price / 1_000_000).toFixed(1)}M` : market.avg_price.toLocaleString()}
                     </dd>
                   </div>
                 </dl>
               </div>
+              )}
             </Section>
 
             {/* The calculator carries its own heading, so only the plan needs one. */}
             {showPayment && (
-            <Section id="payment" title={property.payment_plan ? t('payment_plan_title') : undefined}>
-              {property.payment_plan && (
+            <Section id="payment" title={property.payment_plan.length ? t('payment_plan_title') : undefined}>
+              {property.payment_plan.length > 0 && (
                 <>
                   <p className="-mt-2 mb-6 text-sm text-gray-500">{t('payment_plan_subtitle')}</p>
                   <ol className="relative space-y-5 border-s-2 border-gray-100 ps-6">
@@ -570,13 +586,15 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
             </Section>
             )}
 
+            {similar.length > 0 && (
             <Section id="similar" title={tCommon('similar_properties')}>
               <div className="grid gap-6 sm:grid-cols-2">
-                {similar.map((item: Property) => (
+                {similar.map((item: ListingCard) => (
                   <PropertyCard key={item._id} property={item} />
                 ))}
               </div>
             </Section>
+            )}
 
             {/* Regulatory footer */}
             <div className="rounded-2xl bg-gray-50 p-6">
@@ -596,12 +614,14 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                       : t('days_ago', { days: property.listed_days_ago })}
                   </dd>
                 </div>
-                <div>
-                  <dt className="text-gray-500">{t('ownership')}</dt>
-                  <dd className="font-medium text-secondary">
-                    {t(`ownership_${property.ownership}`)}
-                  </dd>
-                </div>
+                {property.ownership && (
+                  <div>
+                    <dt className="text-gray-500">{t('ownership')}</dt>
+                    <dd className="font-medium text-secondary">
+                      {t(`ownership_${property.ownership}`)}
+                    </dd>
+                  </div>
+                )}
               </dl>
             </div>
           </div>
@@ -613,6 +633,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                 agent={property.agent}
                 propertyId={property._id}
                 shareTitle={title}
+                fallbackPhone={company.contact.phones[0]}
               />
               <LeadForm propertyId={property._id} />
             </div>
@@ -621,8 +642,8 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
       </div>
 
       <StickyContactBar
-        phone={property.agent.phone}
-        whatsapp={property.agent.whatsapp}
+        phone={property.agent.phone ?? company.contact.phones[0]}
+        whatsapp={property.agent.whatsapp ?? company.contact.phonesRaw[0]}
         price={`${priceLabel}${frequencySuffix}`}
         shareTitle={title}
       />

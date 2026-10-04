@@ -31,3 +31,13 @@ export const CRON_SECRET = process.env.CRON_SECRET ?? "";
 
 /** Set to "false" to disable the in-process scheduler (e.g. when an external cron is used). */
 export const SCHEDULER_ENABLED = process.env.SCHEDULER_ENABLED !== "false";
+
+/**
+ * Public URL of this app (the agent CRM + API), e.g. https://app.eliterealestate.qa.
+ * Used to build absolute photo URLs for the website. Falls back to the request's origin.
+ */
+export const APP_URL = (process.env.APP_URL ?? "").replace(/\/+$/, "");
+
+export function publicOrigin(request: Request) {
+  return APP_URL || new URL(request.url).origin;
+}

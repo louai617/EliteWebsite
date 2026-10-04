@@ -52,13 +52,14 @@ export default async function ViewingsPage({ searchParams }: PageProps<"/viewing
   }
 
   const upcoming = param(sp, "when") === "upcoming";
+  const toConfirm = param(sp, "when") === "confirm";
   const params = listParams(sp, VIEWING_SORTS, { sort: "startsAt", dir: upcoming ? "asc" : "desc" });
-  const result = await listViewings(user, params, { ...filters, from: dateParam(sp, "from"), to: dateParam(sp, "to"), upcoming });
+  const result = await listViewings(user, params, { ...filters, from: dateParam(sp, "from"), to: dateParam(sp, "to"), upcoming, toConfirm });
   return (
     <>
       {header}
       <ViewingsToolbar agents={agents} viewer={viewer} view="list" />
-      <ViewingsTable rows={result.items} agents={agents} viewer={viewer} filtered={Boolean(params.q || filters.status || filters.agentId || upcoming)} />
+      <ViewingsTable rows={result.items} agents={agents} viewer={viewer} filtered={Boolean(params.q || filters.status || filters.agentId || upcoming || toConfirm)} />
       <Pagination page={result.page} pageSize={result.pageSize} total={result.total} pageCount={result.pageCount} />
     </>
   );

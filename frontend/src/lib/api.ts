@@ -76,7 +76,8 @@ export const api = {
   get: <T>(path: string, signal?: AbortSignal) => apiRequest<T>(path, { signal }),
   post: <T>(path: string, body?: unknown) => apiRequest<T>(path, { method: 'POST', body: body ?? {} }),
   patch: <T>(path: string, body: unknown) => apiRequest<T>(path, { method: 'PATCH', body }),
-  del: <T>(path: string) => apiRequest<T>(path, { method: 'DELETE' }),
+  put: <T>(path: string, body: unknown) => apiRequest<T>(path, { method: 'PUT', body }),
+  del: <T>(path: string, body?: unknown) => apiRequest<T>(path, { method: 'DELETE', body: body ?? {} }),
 };
 
 /** First message of an error, for forms. */

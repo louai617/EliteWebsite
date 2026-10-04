@@ -7,7 +7,7 @@ import type { AgentOption, Viewer } from "@/types/options";
 import { cn } from "@/lib/utils";
 import { ClearFilters, FilterSelect, RangeFilter, SearchInput, Toolbar } from "@/components/shared/data-table/toolbar";
 
-const FILTER_KEYS = ["q", "category", "subcategory", "status", "purpose", "type", "area", "priceMin", "priceMax", "beds", "furnishing", "agent", "featured"];
+const FILTER_KEYS = ["q", "category", "subcategory", "status", "purpose", "type", "area", "priceMin", "priceMax", "beds", "furnishing", "agent", "featured", "website"];
 
 export function PropertiesToolbar({ areas, agents, viewer }: { areas: string[]; agents: AgentOption[]; viewer: Viewer }) {
   const url = useUrlState();
@@ -33,6 +33,7 @@ export function PropertiesToolbar({ areas, agents, viewer }: { areas: string[]; 
         label="Agent"
         options={[...(viewer.isManager ? [{ value: "none", label: "Unassigned" }] : []), ...agents.map((a) => ({ value: a.id, label: a.id === viewer.id ? `${a.name} (me)` : a.name }))]}
       />
+      <FilterSelect param="website" label="Website" options={[{ value: "live", label: "Live on website" }, { value: "hidden", label: "Not on website" }]} />
       <ClearFilters params={FILTER_KEYS} keep={["view", "size"]} />
       <div className="ml-auto flex rounded-md border bg-card p-0.5 shadow-xs" role="group" aria-label="View">
         {(["table", "grid"] as const).map((v) => (

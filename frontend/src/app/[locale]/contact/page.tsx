@@ -14,7 +14,7 @@ export default async function ContactPage({ params }: { params: Promise<{ locale
         <div className="max-w-3xl mx-auto text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">{t('contact')}</h1>
           <p className="text-xl text-gray-500 font-light">
-            Have a question or looking for your next dream home in Qatar? We're here to help. Contact us through any of the channels below.
+            Have a question or looking for your next dream home in Qatar? We&apos;re here to help. Contact us through any of the channels below.
           </p>
         </div>
 

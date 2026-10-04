@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { Building2, Star } from "lucide-react";
+import { Building2, Globe, Star } from "lucide-react";
 import type { PropertyListItem } from "@/services/properties";
 import { FURNISHING_META, PROPERTY_CATEGORY_META, PROPERTY_STATUS_META, PROPERTY_SUBCATEGORY_META, PROPERTY_TYPE_META, PURPOSE_META } from "@/lib/constants";
 import { formatDate, formatMoney, formatNumber } from "@/lib/format";
@@ -35,6 +35,18 @@ export function PropertiesTable({ rows, viewer, filtered }: { rows: PropertyList
       ),
     },
     { id: "status", header: "Status", cell: (p) => <EnumBadge meta={PROPERTY_STATUS_META} value={p.status} dot /> },
+    {
+      id: "website",
+      header: "Website",
+      cell: (p) =>
+        p.websitePublished && (p.status === "AVAILABLE" || p.status === "RESERVED") ? (
+          <span className="inline-flex items-center gap-1 text-xs text-emerald-700" title="Live on eliterealestate.qa">
+            <Globe className="size-3.5" /> Live
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">{p.websitePublished ? "—" : "Hidden"}</span>
+        ),
+    },
     {
       id: "class",
       header: "Category",

@@ -1,11 +1,24 @@
 # Setup guide
 
-Two apps run side by side. Start the **backend first**.
+Two portals run side by side and share one database. Start the **agent app first**.
 
-| App | Folder | URL | What |
-| --- | --- | --- | --- |
-| CRM + API | `backend/` | http://localhost:3002 | Staff CRM, REST API, database |
-| Website + client portal | `frontend/` | http://localhost:3001 | Public site, client portal |
+| Portal | Folder | Local | Production | Who |
+| --- | --- | --- | --- | --- |
+| Agent app (CRM + API) | `backend/` | http://localhost:3002 | https://app.eliterealestate.qa | Agents, managers, admin |
+| Website + client dashboard | `frontend/` | http://localhost:3001 | https://eliterealestate.qa | Visitors and clients |
+
+### How the two portals connect
+
+- **One source of truth.** Every property lives in the agent app's database. The website has
+  no listings of its own: it reads them from the agent app (`/api/public/properties`).
+- **Agent posts → website shows it.** A property appears on the website when it is
+  *Available* or *Reserved* and **Show on website** is on (property form → *Website* section).
+  Edits, price changes, photos, *Sold*/*Rented* and unpublishing show up on the website within
+  a couple of seconds (instant refresh, see step 4), or within 60 s at most.
+- **Client acts → agent sees it.** Viewings booked on the website land in the agent's
+  **Viewings** (badge *Website · confirm*) with a high-priority *Confirm website booking*
+  task. Confirming it in the agent app shows *Confirmed* in the client's dashboard. Saved
+  homes, preferences, enquiries and cancellations appear on the client's page in the agent app.
 
 ## 1. Requirements
 
@@ -45,9 +58,13 @@ npm run dev                   # http://localhost:3002
 ```bash
 npm run db:backup             # safety copy in backend/backups/
 npx prisma migrate deploy     # adds the new tables/columns, keeps your data
+npm run import:website-listings   # copies the 4 listings that used to be hard-coded on the website
 npx prisma db seed            # optional: reloads demo data (this WIPES the CRM tables)
 npm run dev
 ```
+
+`import:website-listings` is safe to run more than once: listings that already exist (same
+reference, e.g. `ELT-00123`) are skipped. The seed runs it automatically.
 
 Run the seed if you want the demo logins below (including the client account) and the
 sample history. Skip it if you have entered data you want to keep.
@@ -61,7 +78,19 @@ cp .env.example .env.local    # Windows: copy .env.example .env.local
 npm run dev                   # http://localhost:3001
 ```
 
-The defaults in `.env.local` already point at the backend (`http://localhost:3002/api`).
+The defaults in `.env.local` already point at the agent app (`http://localhost:3002/api`).
+
+**Instant website refresh (recommended).** Put the same random value in both files, then
+restart both apps:
+
+```bash
+openssl rand -base64 32       # or: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+```
+
+- `backend/.env` → `WEBSITE_REVALIDATE_SECRET="<value>"`
+- `frontend/.env.local` → `REVALIDATE_SECRET=<value>`
+
+Without it everything still works; the website just picks up agent changes within 60 seconds.
 
 ## 5. Log in
 
@@ -86,6 +115,14 @@ CRM is sent to their portal. These are development accounts — change them befo
 - **Imports**: upload `backend/samples/property-finder.sample.json` or `qatar-living.sample.json`. Keep "Dry run" ticked to preview, untick it to import.
 - **Clients → open a client → Client portal** card: give that client a portal login.
 
+**Agent posts, website shows it (:3002 → :3001)**
+- **Properties → New property**: fill it in, keep **Show on website** on in the *Website*
+  section (also: Exclusive, Verified, Arabic title, completion, payment plan, nearby places).
+  Save, then open http://localhost:3001/en/properties — it is there.
+- Change its price, untick **Show on website**, or mark it *Sold*: the website follows.
+- The property page in the agent app shows *Live on website* with a link to the public page;
+  the properties table has a *Website* column and filter.
+
 **As an agent (omar@elite.qa)**
 - Dashboard → "Today's work" counters.
 - **Log activity** (top of My tasks, or New → Logged activity): log a call and watch the "Make 20 calls" daily task progress.
@@ -93,13 +130,26 @@ CRM is sent to their portal. These are development accounts — change them befo
 
 **As a client (website, :3001)**
 - Log in as client@elite.qa, or register a new account at http://localhost:3001/en/register.
-- Browse Properties, Enquiries (send a request — it appears in the CRM as a lead), Tasks, Reports, Activity, My data, Account.
+- Open any property → **Book a viewing**: pick a day and a free time (the agent's calendar is
+  checked) → *Add to calendar*. Then in the agent app (omar@elite.qa or admin) open
+  **Viewings → list → "Website bookings to confirm"** and choose ⋯ → *Confirm*; the client's
+  dashboard switches to *Confirmed*.
+- Tap the ♥ on listings to save them. **Dashboard**:
+  - **Overview**: your journey (Joined → Enquiry → Viewing → Offer → Contract → Keys), next
+    viewing, your agent, price-drop alerts, homes picked for you.
+  - **Bookings**: countdown, call/WhatsApp the agent, directions, add to calendar,
+    reschedule or cancel (up to 2 hours before).
+  - **Saved homes**: price changes since you saved, compare up to 3 side by side.
+  - **For you** and **Preferences**: what you're looking for → matched listings. Your agent
+    sees the same preferences on your client page.
+  - Enquiries, Tasks, Reports, Activity, My data, Account.
 
 ## 7. Useful commands (in `backend/`)
 
 | Command | What it does |
 | --- | --- |
 | `npm test` | Runs all service tests on a separate test database (your data is not touched) |
+| `npm run import:website-listings` | Adds the website's original listings to the CRM (skips existing ones) |
 | `npm run db:backup` | Copies the database to `backend/backups/` |
 | `npm run cron:daily` | Runs the end-of-day rollover by hand |
 | `npm run db:studio` | Opens a database browser |
@@ -118,7 +168,40 @@ freezes the previous day's reports and creates the new day's daily tasks. Nothin
 
 Every variable is explained in `backend/.env.example` and `frontend/.env.example`.
 
-## 9. Troubleshooting
+## 9. Going live: eliterealestate.qa and app.eliterealestate.qa
+
+Run each app with `npm run build && npm start` behind HTTPS (in `backend/`, apply migrations
+first with `npm run db:deploy`). Point DNS for `eliterealestate.qa` (and `www`) to the
+website and `app.eliterealestate.qa` to the agent app.
+
+`backend/.env` (agent app)
+
+```bash
+APP_URL="https://app.eliterealestate.qa"
+CLIENT_APP_URL="https://eliterealestate.qa"
+CORS_ORIGINS="https://eliterealestate.qa,https://www.eliterealestate.qa"
+SESSION_COOKIE_DOMAIN=".eliterealestate.qa"
+SESSION_SECRET="<long random value>"
+WEBSITE_REVALIDATE_SECRET="<long random value, same as the website's REVALIDATE_SECRET>"
+```
+
+`frontend/.env.local` (website). `NEXT_PUBLIC_` values are baked in at build time, so rebuild
+after changing them.
+
+```bash
+NEXT_PUBLIC_API_URL=https://app.eliterealestate.qa/api
+NEXT_PUBLIC_CRM_URL=https://app.eliterealestate.qa
+NEXT_PUBLIC_SITE_URL=https://eliterealestate.qa
+REVALIDATE_SECRET=<same value as WEBSITE_REVALIDATE_SECRET>
+# API_INTERNAL_URL=http://127.0.0.1:3002/api   # optional, if both run on one server
+```
+
+Both are subdomains of the same site, so one login cookie (`.eliterealestate.qa`) works on
+both: a staff member who signs in on the website is sent to the agent app, a client who opens
+the agent app is sent to their dashboard. Secrets stay in the agent app's `.env`; the
+website's only secret, `REVALIDATE_SECRET`, is server-only and never reaches the browser.
+
+## 10. Troubleshooting
 
 | Problem | Fix |
 | --- | --- |
@@ -129,4 +212,7 @@ Every variable is explained in `backend/.env.example` and `frontend/.env.example
 | `PrismaConfigEnvError` / missing env during install | Make sure `backend/.env` exists (`cp .env.example .env`), then `npm install` again. |
 | Seed fails with a table/column error | Run `npx prisma migrate deploy` (or `npx prisma migrate dev`) first, then the seed. |
 | Property photos don't show | The demo photos come from images.unsplash.com and need an internet connection. |
+| Website shows "No properties" | Start the agent app first, check that properties have **Show on website** on and are *Available*/*Reserved*. |
+| Agent changes take up to a minute to appear | Set the same `WEBSITE_REVALIDATE_SECRET` / `REVALIDATE_SECRET` in both env files (step 4) and restart both apps. |
+| "Book a viewing" shows no times | Viewings are 09:00–20:00 Qatar time (Fridays from 14:00), at least 2 hours ahead, up to 30 days ahead; taken slots are hidden. |
 | Want a completely clean start | In `backend/`: `npm run db:reset` (drops, re-migrates and re-seeds — wipes all data). |
