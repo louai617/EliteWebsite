@@ -112,7 +112,16 @@ function LeadForm({
             <SelectField control={form.control} name="furnishing" label="Furnishing" options={options(FURNISHING_META)} allowEmpty emptyLabel="No preference" />
           </Section>
           <Section title="Pipeline">
-            <SelectField control={form.control} name="status" label="Status" required options={options(LEAD_STATUS_META)} />
+            <SelectField
+              control={form.control}
+              name="status"
+              label="Status"
+              required
+              description={lead ? "Won and Lost are set from the stage menu (they need paperwork or a reason)." : undefined}
+              options={options(LEAD_STATUS_META).filter((o) =>
+                lead ? (o.value !== "WON" && o.value !== "LOST") || o.value === lead.status : ["NEW", "CONTACTED", "QUALIFIED", "VIEWING_SCHEDULED"].includes(o.value),
+              )}
+            />
             <SelectField control={form.control} name="priority" label="Priority" required options={options(PRIORITY_META)} />
             <AgentField control={form.control} name="agentId" agents={agents} viewer={viewer} className="sm:col-span-2" />
             <TextareaField control={form.control} name="notes" label="Notes" rows={3} className="sm:col-span-2" />

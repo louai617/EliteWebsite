@@ -73,3 +73,62 @@ export async function deleteUpload(url: string) {
   const full = resolve(url);
   if (full) await unlink(/*turbopackIgnore: true*/ full).catch(() => undefined);
 }
+
+// ───────────────────────────── Documents (private) ─────────────────────────────
+
+/**
+ * Lead / client / deal documents (viewing forms, booking forms, payment proofs, QID,
+ * passports…). Stored under ./storage/documents with random names and never served by a
+ * public path: /api/documents/:id streams them after a permission check.
+ */
+const DOCS_ROOT = path.join(process.cwd(), "storage", "documents");
+export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
+export const DOCUMENT_TYPES: Record<string, string> = {
+  "application/pdf": "pdf",
+  "image/jpeg": "jpg",
+  "image/png": "png",
+  "image/webp": "webp",
+};
+
+function sniffDocument(buf: Buffer): string | null {
+  if (buf.subarray(0, 5).toString("ascii") === "%PDF-") return "application/pdf";
+  const image = sniff(buf);
+  return image && DOCUMENT_TYPES[image] ? image : null;
+}
+
+export async function saveDocumentFile(file: File) {
+  if (file.size === 0) throw invalid("The file is empty.", { file: ["Empty file"] });
+  if (file.size > MAX_DOCUMENT_BYTES) throw invalid("Documents must be 10 MB or smaller.", { file: ["Max 10 MB"] });
+  const buf = Buffer.from(await file.arrayBuffer());
+  const mimeType = sniffDocument(buf);
+  if (!mimeType) throw invalid("Upload a PDF or a photo (JPG, PNG or WebP).", { file: ["PDF, JPG, PNG or WebP only"] });
+  const now = new Date();
+  const folder = `${now.getUTCFullYear()}/${String(now.getUTCMonth() + 1).padStart(2, "0")}`;
+  const storageKey = `${folder}/${randomUUID()}.${DOCUMENT_TYPES[mimeType]}`;
+  await mkdir(/*turbopackIgnore: true*/ path.join(DOCS_ROOT, folder), { recursive: true });
+  await writeFile(/*turbopackIgnore: true*/ path.join(DOCS_ROOT, storageKey), buf);
+  return { storageKey, mimeType, size: buf.length };
+}
+
+function resolveDocument(storageKey: string) {
+  const full = path.resolve(DOCS_ROOT, storageKey);
+  return full.startsWith(DOCS_ROOT + path.sep) ? full : null;
+}
+
+export async function readDocumentFile(storageKey: string) {
+  const full = resolveDocument(storageKey);
+  if (!full) return null;
+  return readFile(/*turbopackIgnore: true*/ full).catch(() => null);
+}
+
+export async function deleteDocumentFile(storageKey: string) {
+  const full = resolveDocument(storageKey);
+  if (full) await unlink(/*turbopackIgnore: true*/ full).catch(() => undefined);
+}
+
+/** A safe download name: letters, digits, dots, dashes; keeps the extension we detected. */
+export function safeFileName(name: string, mimeType: string) {
+  const ext = DOCUMENT_TYPES[mimeType] ?? "bin";
+  const base = name.replace(/\.[^.]*$/, "").normalize("NFKD").replace(/[^a-zA-Z0-9._ -]/g, "").trim().replace(/\s+/g, "-").slice(0, 80) || "document";
+  return `${base}.${ext}`;
+}

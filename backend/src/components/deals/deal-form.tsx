@@ -7,7 +7,7 @@ import type { z } from "zod";
 import { createDealAction, updateDealAction } from "@/actions/deals";
 import { useFormAction } from "@/hooks/use-action";
 import { calculateCommission } from "@/lib/commission";
-import { DEAL_STATUS_META, DEAL_TYPE_META, options } from "@/lib/constants";
+import { DEAL_TYPE_META, options } from "@/lib/constants";
 import { formatMoney, toDateInput } from "@/lib/format";
 import { dealSchema, type DealInput } from "@/schemas/deal";
 import type { ActionResult } from "@/types/action";
@@ -32,11 +32,10 @@ export interface DealRecord {
   id: string;
   reference: string;
   propertyId: string;
-  clientId: string;
+  clientId: string | null;
   leadId: string | null;
   agentId: string | null;
   type: DealInput["type"];
-  status: DealInput["status"];
   amount: number;
   commissionPercent: number;
   agentSharePercent: number;
@@ -44,7 +43,7 @@ export interface DealRecord {
   closingDate: Date | null;
   notes: string | null;
   property: { id: string; reference: string; title: string };
-  client: { id: string; fullName: string };
+  client: { id: string; fullName: string } | null;
   lead: { id: string; fullName: string } | null;
 }
 
@@ -91,11 +90,10 @@ function DealForm({ deal, prefill, defaults, agents, viewer, onSaved }: { deal?:
     resolver: zodResolver(dealSchema),
     defaultValues: {
       propertyId: deal?.propertyId ?? prefill?.propertyId ?? "",
-      clientId: deal?.clientId ?? prefill?.clientId ?? "",
+      clientId: deal?.clientId ?? prefill?.clientId ?? null,
       leadId: deal?.leadId ?? prefill?.leadId ?? null,
       agentId: deal ? deal.agentId : null,
       type,
-      status: deal?.status ?? "NEGOTIATION",
       amount: deal?.amount ?? prefill?.amount ?? "",
       commissionPercent: deal?.commissionPercent ?? (type === "SALE" ? defaults.saleCommissionPercent : defaults.rentalCommissionPercent),
       agentSharePercent: deal?.agentSharePercent ?? defaults.agentSharePercent,
@@ -141,10 +139,9 @@ function DealForm({ deal, prefill, defaults, agents, viewer, onSaved }: { deal?:
             className="sm:col-span-2"
             initialOption={deal ? { id: deal.property.id, label: `${deal.property.reference} · ${deal.property.title}` } : prefill?.propertyOption}
           />
-          <EntityField control={form.control} name="clientId" label="Client" kind="client" required initialOption={deal ? { id: deal.client.id, label: deal.client.fullName } : prefill?.clientOption} description="Convert the lead to a client first if needed." />
-          <EntityField control={form.control} name="leadId" label="Originating lead" kind="lead" initialOption={deal?.lead ? { id: deal.lead.id, label: deal.lead.fullName } : prefill?.leadOption} />
+          <EntityField control={form.control} name="leadId" label="Lead" kind="lead" initialOption={deal?.lead ? { id: deal.lead.id, label: deal.lead.fullName } : prefill?.leadOption} description="Closing the deal turns the lead into a client." />
+          <EntityField control={form.control} name="clientId" label="Client (existing)" kind="client" initialOption={deal?.client ? { id: deal.client.id, label: deal.client.fullName } : prefill?.clientOption} description="Only if they are already a client." />
           <SelectField control={form.control} name="type" label="Deal type" required options={options(DEAL_TYPE_META)} />
-          <SelectField control={form.control} name="status" label="Status" required options={options(DEAL_STATUS_META)} />
           <TextField
             control={form.control}
             name="amount"

@@ -142,6 +142,14 @@ function log(
 }
 
 async function wipe() {
+  // Tables added for documents, reservations, contracts and password codes (children first).
+  await db.contract.deleteMany();
+  await db.contractTemplate.deleteMany();
+  await db.document.deleteMany();
+  await db.reservation.deleteMany();
+  await db.leadPassRequest.deleteMany();
+  await db.otpCode.deleteMany();
+  await db.emailLog.deleteMany();
   // Children first (FK order).
   await db.importRecord.deleteMany();
   await db.importRun.deleteMany();
@@ -200,7 +208,12 @@ async function main() {
   await wipe();
 
   const settings = await db.settings.create({
-    data: { id: "default", companyName: "ELITE Real Estate", saleCommissionPercent: 2, rentalCommissionPercent: 8.33, agentSharePercent: 40 },
+    data: {
+      id: "default", companyName: "ELITE Real Estate", saleCommissionPercent: 2, rentalCommissionPercent: 8.33, agentSharePercent: 40,
+      // Demo payment details so website reservations work locally — replace them in Settings → Reservations & payments.
+      fawranEnabled: true, bankName: "Demo Bank (replace in Settings)", bankAccountName: "ELITE Real Estate W.L.L.",
+      bankIban: "QA00DEMO000000000000000000000", fawranAlias: "ELITE-DEMO", paymentInstructions: "Demo details for local testing — do not transfer money.",
+    },
   });
 
   // ─── Users ───
@@ -525,10 +538,10 @@ async function main() {
 
   // ─── Deals ───
   const dealPlan: { status: DealStatus; monthsAgo: number }[] = [
-    { status: "CLOSED_WON", monthsAgo: 5 }, { status: "CLOSED_WON", monthsAgo: 4 }, { status: "CLOSED_WON", monthsAgo: 3 },
-    { status: "CLOSED_WON", monthsAgo: 2 }, { status: "CLOSED_WON", monthsAgo: 1 }, { status: "CLOSED_LOST", monthsAgo: 2 },
-    { status: "CONTRACT_SIGNED", monthsAgo: 0 }, { status: "CONTRACT_PENDING", monthsAgo: 0 },
-    { status: "NEGOTIATION", monthsAgo: 0 }, { status: "NEGOTIATION", monthsAgo: 0 },
+    { status: "CLOSED", monthsAgo: 5 }, { status: "CLOSED", monthsAgo: 4 }, { status: "CLOSED", monthsAgo: 3 },
+    { status: "CLOSED", monthsAgo: 2 }, { status: "CLOSED", monthsAgo: 1 }, { status: "CANCELLED", monthsAgo: 2 },
+    { status: "PENDING_CONTRACT", monthsAgo: 0 }, { status: "PENDING_CONTRACT", monthsAgo: 0 },
+    { status: "PENDING_CONTRACT", monthsAgo: 0 }, { status: "PENDING_CONTRACT", monthsAgo: 0 },
   ];
   const rented = properties.filter((p) => p.status === "RENTED");
   const sold = properties.filter((p) => p.status === "SOLD");
@@ -545,7 +558,7 @@ async function main() {
     const amount = type === "RENTAL" ? property.price * 12 : roundTo(property.price * (0.93 + rand() * 0.05), 10_000);
     const commissionPercent = type === "RENTAL" ? settings.rentalCommissionPercent : settings.saleCommissionPercent;
     const breakdown = calculateCommission({ amount, commissionPercent, agentSharePercent: settings.agentSharePercent });
-    const closedAt = plan.status.startsWith("CLOSED") ? daysAgo(plan.monthsAgo * 30 + int(0, 12)) : null;
+    const closedAt = plan.status !== "PENDING_CONTRACT" ? daysAgo(plan.monthsAgo * 30 + int(0, 12)) : null;
     const createdAt = closedAt ? new Date(closedAt.getTime() - int(15, 40) * DAY) : daysAgo(int(3, 20));
     dealCounter += 1;
     const deal = await db.deal.create({
@@ -562,10 +575,11 @@ async function main() {
         commissionPercent,
         agentSharePercent: settings.agentSharePercent,
         ...breakdown,
-        contractDate: ["CONTRACT_SIGNED", "CLOSED_WON"].includes(plan.status) ? new Date((closedAt ?? now).getTime() - 5 * DAY) : null,
+        contractDate: plan.status === "CLOSED" ? new Date((closedAt ?? now).getTime() - 5 * DAY) : null,
         closingDate: closedAt ?? daysFromNow(int(10, 40)),
         closedAt,
-        notes: plan.status === "CLOSED_LOST" ? "Client chose a competing unit in Lusail." : null,
+        notes: plan.status === "CANCELLED" ? "Client chose a competing unit in Lusail." : null,
+        cancelReason: plan.status === "CANCELLED" ? "Client chose a competing unit in Lusail" : null,
         createdAt,
       },
     });
@@ -573,7 +587,7 @@ async function main() {
     const label = `${deal.reference} · ${property.reference}`;
     log("CREATED", "DEAL", deal.id, label, `Opened ${type.toLowerCase()} deal ${deal.reference} for ${property.reference}`, property.agentId, createdAt, { dealId: deal.id, propertyId: property.id, clientId: client.id, leadId: lead?.id });
     if (closedAt) {
-      log("CLOSED", "DEAL", deal.id, label, `${plan.status === "CLOSED_WON" ? "Closed won" : "Closed lost"}: ${deal.reference}`, property.agentId, closedAt, { dealId: deal.id, propertyId: property.id, clientId: client.id }, { to: plan.status });
+      log("CLOSED", "DEAL", deal.id, label, `${plan.status === "CLOSED" ? "Closed" : "Cancelled"}: ${deal.reference}`, property.agentId, closedAt, { dealId: deal.id, propertyId: property.id, clientId: client.id }, { to: plan.status });
     }
   }
   await db.counter.createMany({
@@ -802,7 +816,7 @@ async function main() {
   for (const v of viewings.filter((v) => v.status === "COMPLETED" && v.agentId && now.getTime() - v.endsAt.getTime() < 22 * DAY)) {
     activityRows.push({ type: "VIEWING", source: "SYSTEM", agentId: v.agentId!, loggedById: v.agentId!, occurredAt: v.endsAt, businessDate: businessDay(v.endsAt), viewingId: v.id, propertyId: v.propertyId, leadId: v.leadId, dedupeKey: `viewing-completed:${v.id}` });
   }
-  for (const d of deals.filter((d) => d.status === "CLOSED_WON" && d.closedAt && d.agentId && now.getTime() - d.closedAt.getTime() < 22 * DAY)) {
+  for (const d of deals.filter((d) => d.status === "CLOSED" && d.closedAt && d.agentId && now.getTime() - d.closedAt.getTime() < 22 * DAY)) {
     activityRows.push({ type: "CONVERSION", source: "SYSTEM", agentId: d.agentId!, loggedById: d.agentId!, occurredAt: d.closedAt!, businessDate: businessDay(d.closedAt!), dealId: d.id, leadId: d.leadId, dedupeKey: d.leadId ? `conversion:lead:${d.leadId}` : `conversion:deal:${d.id}` });
   }
   await db.agentActivity.createMany({ data: activityRows });

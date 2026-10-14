@@ -9,6 +9,7 @@ import type { Booking } from '@/lib/api-types';
 import { usePortal } from '@/components/portal/use-portal';
 import { Badge, Card, cn, dateTime, Empty, PageTitle, Section } from '@/components/portal/ui';
 import SlotPicker from '@/components/listings/SlotPicker';
+import { ReservationsSection } from '@/components/portal/reservations-section';
 
 const TZ = process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE || 'Asia/Qatar';
 
@@ -221,7 +222,7 @@ export default function PortalBookingsPage() {
     <>
       <PageTitle
         title="My bookings"
-        description="Viewings you booked online or with your agent."
+        description="Viewings and home reservations — booked online or with your agent."
         actions={
           <Link href={`/${locale}/properties`} className="rounded-xl bg-[#1a1a1a] px-5 py-2.5 text-sm font-bold text-white hover:bg-[#b98f42]">
             Book another viewing
@@ -233,6 +234,7 @@ export default function PortalBookingsPage() {
           <CheckCircle2 className="h-4 w-4" /> {flash}
         </p>
       )}
+      <ReservationsSection />
       <Section state={state}>
         {({ upcoming, past }) => (
           <div className="space-y-8">

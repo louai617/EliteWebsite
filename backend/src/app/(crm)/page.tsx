@@ -89,7 +89,7 @@ export default async function DashboardPage() {
           label="Commission earned"
           value={formatMoneyCompact(stats.deals.wonCommission)}
           icon={Wallet}
-          href="/deals?status=CLOSED_WON"
+          href="/deals?status=CLOSED"
           hint={`${formatMoneyCompact(monthCommission)} this month · ${formatMoneyCompact(stats.deals.wonValue)} closed`}
         />
         <StatCard
@@ -144,7 +144,7 @@ export default async function DashboardPage() {
           <Metric label="Total leads" value={stats.leads.total} href="/leads?view=table" />
           <Metric label="New leads" value={stats.leads.new} href="/leads?view=table&status=NEW" />
           <Metric label="Active deals" value={stats.deals.active} href="/deals?status=open" />
-          <Metric label="Closed deals" value={stats.deals.closedWon} href="/deals?status=CLOSED_WON" />
+          <Metric label="Closed deals" value={stats.deals.closedWon} href="/deals?status=CLOSED" />
         </div>
       </Card>
 

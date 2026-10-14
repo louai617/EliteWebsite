@@ -3,6 +3,9 @@ import type { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import type { ViewingStatus } from "@/generated/prisma/enums";
 import { db } from "@/lib/db";
+import { CLIENT_APP_URL } from "@/lib/env";
+import { viewingBooked } from "./email-templates";
+import { queueMail } from "./mail";
 import { conflict, forbidden, invalid, notFound } from "@/lib/errors";
 import type { Actor } from "@/lib/permissions";
 import { APP_TIMEZONE, formatDateTime } from "@/lib/format";
@@ -205,7 +208,17 @@ export async function bookViewing(actor: PortalActor, input: z.output<typeof boo
     return viewing.id;
   });
   const row = await db.viewing.findUniqueOrThrow({ where: { id }, select: bookingSelect });
-  return toBooking(row, origin);
+  const booking = toBooking(row, origin);
+  const me = await db.client.findUnique({ where: { id: clientId }, select: { fullName: true, email: true, portalUser: { select: { email: true } } } });
+  queueMail(
+    me?.portalUser?.email ?? me?.email,
+    "viewing-booked",
+    viewingBooked({
+      name: me?.fullName ?? "there", property: property.title, reference: property.reference, when: formatDateTime(input.startsAt), address: booking.address,
+      agent: booking.agent?.name ?? null, manageUrl: `${CLIENT_APP_URL}/en/dashboard/bookings`, confirmed: false,
+    }),
+  );
+  return booking;
 }
 
 export async function rescheduleBooking(actor: PortalActor, id: string, startsAt: Date, origin: string) {
@@ -481,15 +494,15 @@ export async function journey(clientId: string) {
   const [leads, viewings, deals] = await Promise.all([
     db.lead.findMany({ where: { clientId }, select: { status: true } }),
     db.viewing.findMany({ where: { clientId }, select: { status: true } }),
-    db.deal.findMany({ where: { clientId }, select: { status: true } }),
+    db.deal.findMany({ where: { OR: [{ clientId }, { lead: { clientId } }] }, select: { status: true } }),
   ]);
   let step = 0;
   if (leads.length || viewings.length) step = 1;
   if (viewings.some((v) => v.status !== "CANCELLED")) step = 2;
   if (viewings.some((v) => v.status === "COMPLETED")) step = 3;
-  if (deals.some((d) => d.status === "NEGOTIATION") || leads.some((l) => l.status === "NEGOTIATION")) step = Math.max(step, 4);
-  if (deals.some((d) => d.status === "CONTRACT_PENDING" || d.status === "CONTRACT_SIGNED")) step = Math.max(step, 5);
-  const complete = deals.some((d) => d.status === "CLOSED_WON");
+  if (leads.some((l) => l.status === "NEGOTIATION" || l.status === "WON")) step = Math.max(step, 4);
+  if (deals.some((d) => d.status === "PENDING_CONTRACT")) step = Math.max(step, 5);
+  const complete = deals.some((d) => d.status === "CLOSED");
   if (complete) step = JOURNEY_STEPS.length - 1;
   return { steps: [...JOURNEY_STEPS], current: step, complete };
 }

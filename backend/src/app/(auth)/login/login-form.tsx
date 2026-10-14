@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -79,7 +80,11 @@ export function LoginForm({ next }: { next?: string }) {
         <Button type="submit" size="lg" className="mt-1 w-full" loading={form.formState.isSubmitting}>
           Sign in
         </Button>
-        <p className="text-center text-xs text-muted-foreground">Forgot your password? Ask an admin or manager to reset it.</p>
+        <p className="text-center text-sm">
+          <Link href="/forgot-password" className="text-muted-foreground hover:text-foreground hover:underline">
+            Forgot your password?
+          </Link>
+        </p>
       </form>
     </Form>
   );

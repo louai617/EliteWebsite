@@ -5,6 +5,7 @@ import {
   CalendarClock,
   CheckSquare,
   CloudDownload,
+  FileSignature,
   Gauge,
   Handshake,
   KeyRound,
@@ -13,6 +14,7 @@ import {
   UserRound,
   Users,
   UsersRound,
+  Wallet,
   type LucideIcon,
 } from "lucide-react";
 import { PROPERTY_HIERARCHY } from "@/lib/constants";
@@ -70,6 +72,7 @@ export const NAV: NavGroup[] = [
       },
       { href: "/viewings", label: "Viewings", icon: CalendarClock },
       { href: "/deals", label: "Deals", icon: Handshake },
+      { href: "/reservations", label: "Reservations", icon: Wallet },
       { href: "/owners", label: "Owners", icon: KeyRound },
     ],
   },
@@ -86,6 +89,7 @@ export const NAV: NavGroup[] = [
     items: [
       { href: "/users", label: "Users", icon: Users, permission: "users.manage" },
       { href: "/imports", label: "Imports", icon: CloudDownload, permission: "imports.run" },
+      { href: "/settings/contracts", label: "Contract templates", icon: FileSignature, permission: "settings.edit" },
     ],
   },
   { items: [{ href: "/settings", label: "Settings", icon: Settings }] },

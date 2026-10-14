@@ -2,6 +2,7 @@
 
 import { useOptimistic, useState, useTransition } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import { CalendarClock, GripVertical, MoreHorizontal, Phone } from "lucide-react";
 import type { LeadStatus } from "@/generated/prisma/enums";
@@ -114,6 +115,7 @@ function LeadCard({ lead, onMove, dragging, onDragStart, onDragEnd }: { lead: Le
 }
 
 export function LeadBoard({ columns }: { columns: BoardColumn[] }) {
+  const router = useRouter();
   const [optimistic, addMove] = useOptimistic(columns, applyMove);
   const [, startTransition] = useTransition();
   const [dragId, setDragId] = useState<string | null>(null);
@@ -122,11 +124,20 @@ export function LeadBoard({ columns }: { columns: BoardColumn[] }) {
   const move = (id: string, to: LeadStatus) => {
     const card = optimistic.flatMap((c) => c.items).find((i) => i.id === id);
     if (!card || card.status === to) return;
+    // Won needs the booking paperwork and Lost needs a reason: finish on the lead's page.
+    if (to === "WON" || to === "LOST") {
+      router.push(`/leads/${id}?stage=${to === "WON" ? "won" : "lost"}`);
+      return;
+    }
     startTransition(async () => {
       addMove({ id, to });
       const result = await setLeadStatusAction({ id, status: to });
       if (result.ok) toast.success(`${card.fullName} → ${LEAD_STATUS_META[to].label}`);
-      else toast.error(result.error);
+      else if (result.fieldErrors?.gate?.[0] === "viewing") {
+        toast.error(`${card.fullName}: attach the viewing form or request a pass first.`, {
+          action: { label: "Open lead", onClick: () => router.push(`/leads/${id}?stage=gate`) },
+        });
+      } else toast.error(result.error);
     });
   };
 

@@ -2,11 +2,16 @@
 
 import { authedAction } from "@/lib/action";
 import { idOnly } from "@/schemas/common";
-import { convertLeadSchema, leadAssignSchema, leadInterestSchema, leadSchema, leadStatusSchema, updateLeadSchema } from "@/schemas/lead";
+import { bulkReassignSchema, convertLeadSchema, leadAssignSchema, leadInterestSchema, leadSchema, leadStatusSchema, markLostSchema, markWonSchema, passDecisionSchema, passRequestSchema, updateLeadSchema } from "@/schemas/lead";
 import {
   addLeadInterest,
   assignLead,
+  bulkReassignLeads,
   convertLeadToClient,
+  decideViewingPass,
+  markLeadLost,
+  markLeadWon,
+  requestViewingPass,
   createLead,
   deleteLead,
   removeLeadInterest,
@@ -24,3 +29,16 @@ export const convertLeadAction = authedAction(convertLeadSchema, (input, user) =
 });
 export const addLeadInterestAction = authedAction(leadInterestSchema, (input, user) => addLeadInterest(user, input.leadId, input.propertyId), { message: "Property added" });
 export const removeLeadInterestAction = authedAction(leadInterestSchema, (input, user) => removeLeadInterest(user, input.leadId, input.propertyId), { message: "Property removed" });
+export const markLeadWonAction = authedAction(markWonSchema, (input, user) => markLeadWon(user, input), {
+  message: (r) => `Lead won — deal ${(r as { reference: string }).reference} opened (pending contract)`,
+});
+export const markLeadLostAction = authedAction(markLostSchema, (input, user) => markLeadLost(user, input), { message: "Lead marked as lost" });
+export const requestViewingPassAction = authedAction(passRequestSchema, (input, user) => requestViewingPass(user, input), {
+  message: (r) => ((r as { status: string }).status === "APPROVED" ? "Viewing step passed" : "Pass requested — a manager will review it"),
+});
+export const decideViewingPassAction = authedAction(passDecisionSchema, (input, user) => decideViewingPass(user, input), {
+  message: (r) => ((r as { status: string }).status === "APPROVED" ? "Pass approved" : "Pass rejected"),
+});
+export const bulkReassignLeadsAction = authedAction(bulkReassignSchema, (input, user) => bulkReassignLeads(user, input), {
+  message: (r) => `${(r as { moved: number }).moved} lead${(r as { moved: number }).moved === 1 ? "" : "s"} reassigned`,
+});

@@ -69,6 +69,11 @@ reference, e.g. `ELT-00123`) are skipped. The seed runs it automatically.
 Run the seed if you want the demo logins below (including the client account) and the
 sample history. Skip it if you have entered data you want to keep.
 
+The October update's migration (`lead_rules_documents_contracts`) keeps every record and maps
+the old deal statuses: *Negotiation / Contract pending / Contract signed* → **Pending contract**,
+*Closed won* → **Closed**, *Closed lost* → **Cancelled**. The 24-hour clock for existing leads
+starts when you run the migration, so nothing is moved to the admin straight away.
+
 ## 4. Frontend (website + client portal), terminal 2
 
 ```bash
@@ -123,6 +128,44 @@ CRM is sent to their portal. These are development accounts — change them befo
 - The property page in the agent app shows *Live on website* with a link to the public page;
   the properties table has a *Website* column and filter.
 
+**Lead rules (agent app)**
+- Open a lead in *Viewing* and try to move it to *Negotiation*: you must **attach the signed
+  viewing form** (PDF or photo) or **request a pass** with a reason. An agent's pass request
+  goes to the admin (task + Approve / Reject on the lead); a manager's is approved at once.
+- **Mark as won** needs the **booking form** and the **proof of payment** (attach them in the
+  dialog or the lead's *Documents*). It opens the deal as **Pending contract**, reserves the
+  property and gives the agent a "Prepare the contract" task.
+- **Mark as lost** needs a reason (pick one or write your own).
+- A lead still **New** 24 hours after it was given to an agent moves to the admin automatically
+  (Settings → *Move untouched new leads after* / *Moved leads go to*). Admins and managers can
+  move many leads at once with **Leads → Reassign leads**.
+
+**Deals & contracts**
+- Deals have three statuses: **Pending contract → Closed**, or **Cancelled** (with a reason).
+  Only managers close or cancel. **Closing turns the lead into a client** (documents included)
+  and creates a task to add the client's QID / passport on the client page.
+- On a deal, **Generate contract**: choose the template, fill the few fields it asks for, and
+  print it or *Save as PDF*. Admins edit the drafts under **Contract templates** (sidebar):
+  text with `{{placeholders}}`, fields for agents, live preview. Two starting drafts (sale,
+  tenancy) are created on first use — have them reviewed by your legal adviser.
+- **Clients → a client → Documents**: QID, passport, visa, CR, signed contract… with numbers
+  and expiry dates. Files are private: only staff who can see the record (and the client, for
+  their own file) can open them.
+
+**Reservations & payments**
+- Admin: **Settings → Reservations & payments** — Fawran alias, bank, IBAN, deposit rules.
+- Client on the website: open an *Available* property → **Reserve this home** → choose
+  **Fawran / bank transfer** (card payments show *Coming soon*) → bank details with copy
+  buttons → **Upload the payment receipt**. Agent app → **Reservations** → *Confirm payment*:
+  the home becomes *Reserved* and the client is e-mailed. Unpaid reservations are released
+  after the hold time (48 h by default).
+
+**E-mail & password reset**
+- **Forgot password?** on both sign-in pages sends a 6-digit code (valid 10 minutes, 5 tries),
+  then the person sets a new password and every other device is signed out.
+- Without SMTP settings, e-mails are saved to `backend/storage/outbox/` — open the `.html`
+  files in a browser to see them (and the code). Settings → *E-mail* → **Send me a test e-mail**.
+
 **As an agent (omar@elite.qa)**
 - Dashboard → "Today's work" counters.
 - **Log activity** (top of My tasks, or New → Logged activity): log a call and watch the "Make 20 calls" daily task progress.
@@ -142,7 +185,9 @@ CRM is sent to their portal. These are development accounts — change them befo
   - **Saved homes**: price changes since you saved, compare up to 3 side by side.
   - **For you** and **Preferences**: what you're looking for → matched listings. Your agent
     sees the same preferences on your client page.
-  - Enquiries, Tasks, Reports, Activity, My data, Account.
+  - **Documents**: upload your QID / passport; see receipts and contracts.
+  - Bookings also lists **Reservations** with the payment details and receipt upload.
+  - Enquiries, Tasks, Reports, Activity, Account.
 
 ## 7. Useful commands (in `backend/`)
 
@@ -162,9 +207,13 @@ freezes the previous day's reports and creates the new day's daily tasks. Nothin
 - **Property Finder / Qatar Living feeds:** `PROPERTY_FINDER_FEED_URL`, `PROPERTY_FINDER_API_KEY`,
   `QATAR_LIVING_FEED_URL`, `QATAR_LIVING_API_KEY`. Leave empty to use file uploads only.
   A "Fetch from feed" button appears on the Imports page once a URL is set.
+- **E-mail (SMTP):** `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `MAIL_FROM`. Any provider
+  works (Microsoft 365, Google Workspace, Amazon SES…). Use an address on your domain, e.g.
+  `no-reply@eliterealestate.qa`, and add the provider's SPF/DKIM records so mail isn't flagged.
 - **External cron instead of the built-in scheduler:** set `SCHEDULER_ENABLED=false` and
   `CRON_SECRET=<random>`, then call `POST /api/cron/daily-rollover` with
-  `Authorization: Bearer <CRON_SECRET>` a few minutes after midnight Qatar time.
+  `Authorization: Bearer <CRON_SECRET>` every few minutes (it also runs the 24-hour lead rule
+  and releases unpaid reservations).
 
 Every variable is explained in `backend/.env.example` and `frontend/.env.example`.
 
@@ -183,6 +232,10 @@ CORS_ORIGINS="https://eliterealestate.qa,https://www.eliterealestate.qa"
 SESSION_COOKIE_DOMAIN=".eliterealestate.qa"
 SESSION_SECRET="<long random value>"
 WEBSITE_REVALIDATE_SECRET="<long random value, same as the website's REVALIDATE_SECRET>"
+SMTP_HOST="<your SMTP server>"
+SMTP_USER="<user>"
+SMTP_PASS="<password>"
+MAIL_FROM="ELITE Real Estate <no-reply@eliterealestate.qa>"
 ```
 
 `frontend/.env.local` (website). `NEXT_PUBLIC_` values are baked in at build time, so rebuild
@@ -211,6 +264,9 @@ website's only secret, `REVALIDATE_SECRET`, is server-only and never reaches the
 | `Port 3001/3002 is already in use` | Stop the other process (an older `npm run dev`) or restart the terminal. |
 | `PrismaConfigEnvError` / missing env during install | Make sure `backend/.env` exists (`cp .env.example .env`), then `npm install` again. |
 | Seed fails with a table/column error | Run `npx prisma migrate deploy` (or `npx prisma migrate dev`) first, then the seed. |
+| No password-reset e-mail arrives | Set `SMTP_*` in `backend/.env` (see §8). Locally, open the newest file in `backend/storage/outbox/`. Settings → E-mail shows each attempt. |
+| "Attach the viewing form first" | Upload the signed viewing form on the lead (Documents or Stage paperwork), or request a pass. |
+| "Reserve this home" says reservations aren't open | Fill in the IBAN or Fawran alias under Settings → Reservations & payments. |
 | Property photos don't show | The demo photos come from images.unsplash.com and need an internet connection. |
 | Website shows "No properties" | Start the agent app first, check that properties have **Show on website** on and are *Available*/*Reserved*. |
 | Agent changes take up to a minute to appear | Set the same `WEBSITE_REVALIDATE_SECRET` / `REVALIDATE_SECRET` in both env files (step 4) and restart both apps. |

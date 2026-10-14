@@ -123,3 +123,49 @@
     scrollbar-width: thin;
   }
 }
+
+/* ───────── Generated contracts (screen + print) ───────── */
+.contract-body {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 13.5px;
+  line-height: 1.65;
+  color: #1a1a1a;
+}
+.contract-body h1 {
+  margin: 0 0 18px;
+  text-align: center;
+  font-size: 22px;
+  letter-spacing: 0.02em;
+}
+.contract-body h2 {
+  margin: 22px 0 8px;
+  font-size: 15px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8a6a2f;
+}
+.contract-body p {
+  margin: 0 0 10px;
+}
+.contract-body ul {
+  margin: 0 0 10px;
+  padding-left: 22px;
+  list-style: disc;
+}
+.contract-body hr {
+  margin: 28px 0;
+  border: 0;
+  border-top: 1px solid #ddd;
+}
+.contract-body .blank {
+  color: #9a948a;
+}
+@media print {
+  @page {
+    size: A4;
+    margin: 16mm 18mm;
+  }
+  .contract-body h2 {
+    break-after: avoid;
+  }
+}

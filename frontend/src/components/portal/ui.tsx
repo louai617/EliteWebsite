@@ -93,7 +93,7 @@ export function Badge({ children, tone = 'gray' }: { children: React.ReactNode; 
 }
 
 export function statusTone(status: string): keyof typeof TONES {
-  if (/COMPLETED|CLOSED_WON|SIGNED|AVAILABLE|Completed/.test(status)) return 'green';
+  if (/COMPLETED|CLOSED_WON|^CLOSED$|CONFIRMED|SIGNED|AVAILABLE|Completed/.test(status)) return 'green';
   if (/SCHEDULED|IN_PROGRESS|PENDING|NEGOTIATION|progress|Negotiating|Viewing/.test(status)) return 'blue';
   if (/CANCELLED|LOST|NO_SHOW|Closed/.test(status)) return 'gray';
   if (/RESERVED|TODO|Received/.test(status)) return 'amber';

@@ -51,8 +51,9 @@ export async function apiRequest<T>(path: string, { method = 'GET', body, signal
     response = await fetch(`${API_URL}${path.startsWith('/') ? path : `/${path}`}`, {
       method,
       credentials: 'include',
-      headers: { Accept: 'application/json', ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}) },
-      body: body !== undefined ? JSON.stringify(body) : undefined,
+      // FormData (file uploads) sets its own multipart Content-Type with the boundary.
+      headers: { Accept: 'application/json', ...(body !== undefined && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}) },
+      body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
       signal,
       cache: 'no-store',
     });
@@ -78,7 +79,12 @@ export const api = {
   patch: <T>(path: string, body: unknown) => apiRequest<T>(path, { method: 'PATCH', body }),
   put: <T>(path: string, body: unknown) => apiRequest<T>(path, { method: 'PUT', body }),
   del: <T>(path: string, body?: unknown) => apiRequest<T>(path, { method: 'DELETE', body: body ?? {} }),
+  /** Multipart upload (files). */
+  upload: <T>(path: string, form: FormData) => apiRequest<T>(path, { method: 'POST', body: form }),
 };
+
+/** Opens a document the signed-in user may see (served by the agent app). */
+export const documentUrl = (id: string, download = false) => `${API_URL}/documents/${id}${download ? '?download=1' : ''}`;
 
 /** First message of an error, for forms. */
 export function errorMessage(error: unknown, fallback = 'Something went wrong. Please try again.') {

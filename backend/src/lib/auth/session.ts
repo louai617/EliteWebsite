@@ -1,5 +1,6 @@
 import "server-only";
-import { createHmac, randomBytes } from "node:crypto";
+import { randomBytes } from "node:crypto";
+import { keyedHash } from "./secret";
 import { cache } from "react";
 import { cookies, headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -19,18 +20,9 @@ export interface SessionUser {
   clientId: string | null;
 }
 
-function secret() {
-  const value = process.env.SESSION_SECRET;
-  if (!value || value.length < 16) {
-    if (process.env.NODE_ENV === "production") throw new Error("SESSION_SECRET must be set (≥ 16 chars).");
-    return "dev-only-insecure-session-secret";
-  }
-  return value;
-}
-
 /** Only an HMAC of the token is stored, so the sessions table alone cannot be replayed. */
 function hashToken(token: string) {
-  return createHmac("sha256", secret()).update(token).digest("hex");
+  return keyedHash(token);
 }
 
 /**

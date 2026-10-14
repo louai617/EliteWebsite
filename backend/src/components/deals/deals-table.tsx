@@ -34,7 +34,20 @@ export function DealsTable({ rows, filtered }: { rows: DealListItem[]; filtered:
         </Link>
       ),
     },
-    { id: "client", header: "Client", cell: (d) => <Link href={`/clients/${d.client.id}`} className="text-[13px] hover:underline">{d.client.fullName}</Link> },
+    {
+      id: "client",
+      header: "Client",
+      cell: (d) =>
+        d.client ? (
+          <Link href={`/clients/${d.client.id}`} className="text-[13px] hover:underline">{d.client.fullName}</Link>
+        ) : d.lead ? (
+          <Link href={`/leads/${d.lead.id}`} className="text-[13px] hover:underline" title="Becomes a client when the deal closes">
+            {d.lead.fullName} <span className="text-xs text-muted-foreground">(lead)</span>
+          </Link>
+        ) : (
+          "—"
+        ),
+    },
     { id: "type", header: "Type", cell: (d) => <EnumBadge meta={DEAL_TYPE_META} value={d.type} /> },
     { id: "status", header: "Status", cell: (d) => <EnumBadge meta={DEAL_STATUS_META} value={d.status} dot /> },
     { id: "amount", header: "Amount", sortKey: "amount", className: "tabular text-right whitespace-nowrap", headClassName: "text-right", cell: (d) => formatMoney(d.amount) },

@@ -152,13 +152,17 @@ export default async function PropertyPage({ params }: PageProps<"/properties/[i
             viewing={{ propertyId: property.id, propertyOption, agentId: property.agentId }}
             lead={{ defaults: { interestedPropertyId: property.id, purpose: property.purpose, interestedArea: property.area, bedrooms: property.bedrooms ?? "" }, propertyOption }}
             task={{ propertyId: property.id, propertyOption }}
-            deal={{
+            deal={
+              viewer.isManager
+                ? {
               propertyId: property.id,
               propertyOption,
               type: property.purpose === "SALE" ? "SALE" : "RENTAL",
               amount: property.purpose === "SALE" ? property.price : property.price * 12,
               defaults: settings,
-            }}
+            }
+                : undefined
+            }
           />
         </div>
       </PageHeader>
@@ -324,7 +328,7 @@ export default async function PropertyPage({ params }: PageProps<"/properties/[i
                             <Link href={`/deals/${d.id}`} className="font-medium hover:underline">{d.reference}</Link>
                             <p className="text-xs text-muted-foreground">{DEAL_TYPE_META[d.type].label} · {formatDate(d.closedAt ?? d.createdAt)}</p>
                           </TableCell>
-                          <TableCell className="text-[13px]"><Link href={`/clients/${d.client.id}`} className="hover:underline">{d.client.fullName}</Link></TableCell>
+                          <TableCell className="text-[13px]">{d.client ? <Link href={`/clients/${d.client.id}`} className="hover:underline">{d.client.fullName}</Link> : d.lead ? <Link href={`/leads/${d.lead.id}`} className="hover:underline">{d.lead.fullName}</Link> : "—"}</TableCell>
                           <TableCell><EnumBadge meta={DEAL_STATUS_META} value={d.status} /></TableCell>
                           <TableCell className="tabular text-right">{formatMoney(d.amount)}</TableCell>
                         </TableRow>

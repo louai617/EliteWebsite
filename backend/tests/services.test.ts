@@ -67,7 +67,7 @@ async function main() {
   check("viewing schema requires lead or client", !viewingSchema.safeParse({ propertyId: prop0.id, startsAt: "2026-10-01T10:00", endsAt: "2026-10-01T11:00", status: "SCHEDULED" }).success);
   const parsedV = viewingSchema.safeParse({ propertyId: prop0.id, leadId: (await db.lead.findFirstOrThrow()).id, startsAt: "2026-10-01T10:00", endsAt: "2026-10-01T11:00", status: "SCHEDULED" });
   check("datetime-local input is interpreted as Doha time", parsedV.success && parsedV.data.startsAt.toISOString() === "2026-10-01T07:00:00.000Z", parsedV.success && parsedV.data.startsAt.toISOString());
-  check("deal schema rejects commission > 100%", !dealSchema.safeParse({ propertyId: prop0.id, clientId: prop0.id, type: "SALE", status: "NEGOTIATION", amount: "100", commissionPercent: "150", agentSharePercent: "40" }).success);
+  check("deal schema rejects commission > 100%", !dealSchema.safeParse({ propertyId: prop0.id, clientId: prop0.id, type: "SALE", amount: "100", commissionPercent: "150", agentSharePercent: "40" }).success);
   check("password policy enforced", !createUserSchema.safeParse({ name: "x", email: "x@y.qa", role: "AGENT", isActive: true, password: "short" }).success);
 
   // ── Commission maths ──
@@ -148,17 +148,16 @@ async function main() {
   check("lead converted to client with interests", conv.created && client.fullName === "Svc Lead Ahmed" && client.interests.length === 1 && client.clientType === "TENANT");
   check("convert is idempotent", (await convertLeadToClient(omar, lead.id)).created === false);
 
-  await rejects("deal type must match listing purpose", () => createDeal(omar, dealSchema.parse({ propertyId: created.id, clientId: client.id, type: "SALE", status: "NEGOTIATION", amount: "100000", commissionPercent: "2", agentSharePercent: "40" })), /listed for rent/);
-  await rejects("agent can't create deal on a client they don't own", async () => {
-    const other = await db.client.findFirstOrThrow({ where: { agentId: aisha.id } });
-    return createDeal(omar, dealSchema.parse({ propertyId: created.id, clientId: other.id, type: "RENTAL", status: "NEGOTIATION", amount: "100000", commissionPercent: "8.33", agentSharePercent: "40" }));
-  }, /not found/i);
-  const deal = await createDeal(omar, dealSchema.parse({ propertyId: created.id, clientId: client.id, leadId: lead.id, type: "RENTAL", status: "CONTRACT_PENDING", amount: "108000", commissionPercent: "8.33", agentSharePercent: "40" }));
+  await rejects("deal type must match listing purpose", () => createDeal(manager, dealSchema.parse({ propertyId: created.id, clientId: client.id, type: "SALE", amount: "100000", commissionPercent: "2", agentSharePercent: "40" })), /listed for rent/);
+  await rejects("agents open deals by winning a lead, not by hand", () => createDeal(omar, dealSchema.parse({ propertyId: created.id, clientId: client.id, type: "RENTAL", amount: "100000", commissionPercent: "8.33", agentSharePercent: "40" })), /won/i);
+  const deal = await createDeal(manager, dealSchema.parse({ propertyId: created.id, clientId: client.id, leadId: lead.id, type: "RENTAL", amount: "108000", commissionPercent: "8.33", agentSharePercent: "40" }));
   const dealRow = await db.deal.findUniqueOrThrow({ where: { id: deal.id } });
   check("deal reference DL-####", /^DL-\d{4}$/.test(dealRow.reference));
   check("deal commission computed server-side", dealRow.commissionAmount === 8996 && dealRow.agentCommission === 3598 && dealRow.companyCommission === 5398, dealRow);
   check("deal snapshots the property owner", dealRow.ownerId === owner.id);
-  await setDealStatus(omar, deal.id, "CLOSED_WON");
+  check("new deals start as Pending contract", dealRow.status === "PENDING_CONTRACT");
+  await rejects("agents can't close deals", () => setDealStatus(omar, deal.id, "CLOSED"), /managers/i);
+  await setDealStatus(manager, deal.id, "CLOSED");
   const afterWin = await db.property.findUniqueOrThrow({ where: { id: created.id } });
   check("closing won marks rental property Rented", afterWin.status === "RENTED");
   check("closing won moves lead to Won", (await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).status === "WON");
@@ -195,7 +194,7 @@ async function main() {
   await rejects("duplicate e-mail rejected", () => createUser(admin, createUserSchema.parse({ name: "X", email: "omar@elite.qa", role: "AGENT", isActive: true, password: "Abcdefgh12" })), /already used/);
   const me = await db.user.findUniqueOrThrow({ where: { id: admin.id } });
   await rejects("admin can't deactivate themself", () => updateUser(admin, { id: admin.id, name: me.name, email: me.email, phone: null, role: "ADMIN", avatarUrl: null, isActive: false }), /yourself/);
-  await rejects("only admins edit settings", () => updateSettings(manager, { companyName: "X", defaultCurrency: "QAR", saleCommissionPercent: 2, rentalCommissionPercent: 8, agentSharePercent: 40, leadResponseSlaMinutes: 60, autoLeadResponseTasks: true }), /admins/);
+  await rejects("only admins edit settings", () => updateSettings(manager, { companyName: "X", defaultCurrency: "QAR", saleCommissionPercent: 2, rentalCommissionPercent: 8, agentSharePercent: 40, leadResponseSlaMinutes: 60, autoLeadResponseTasks: true, leadAutoReassignHours: 24, leadEscalationUserId: null }), /admins/);
 
   // ── Dashboard numbers vs direct counts ──
   const stats = await dashboardStats(admin);
@@ -204,8 +203,8 @@ async function main() {
     db.property.count({ where: { status: "AVAILABLE" } }),
     db.lead.count(),
     db.lead.count({ where: { status: "NEW" } }),
-    db.deal.aggregate({ where: { status: { in: ["NEGOTIATION", "CONTRACT_PENDING", "CONTRACT_SIGNED"] } }, _sum: { amount: true }, _count: { _all: true } }),
-    db.deal.count({ where: { status: "CLOSED_WON" } }),
+    db.deal.aggregate({ where: { status: "PENDING_CONTRACT" }, _sum: { amount: true }, _count: { _all: true } }),
+    db.deal.count({ where: { status: "CLOSED" } }),
   ]);
   check("dashboard property counts", stats.properties.total === pTotal && stats.properties.available === pAvail);
   check("dashboard lead counts", stats.leads.total === lTotal && stats.leads.new === lNew);

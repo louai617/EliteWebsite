@@ -77,7 +77,7 @@ export async function globalSearch(actor: Actor, raw: string, perGroup = 5): Pro
           },
         ],
       },
-      select: { id: true, reference: true, status: true, amount: true, client: { select: { fullName: true } }, property: { select: { reference: true } } },
+      select: { id: true, reference: true, status: true, amount: true, client: { select: { fullName: true } }, lead: { select: { fullName: true } }, property: { select: { reference: true } } },
       orderBy: { updatedAt: "desc" },
       take: perGroup,
     }),
@@ -133,7 +133,7 @@ export async function globalSearch(actor: Actor, raw: string, perGroup = 5): Pro
       label: "Deals",
       items: deals.map((d) => ({
         id: d.id,
-        title: `${d.reference} · ${d.client.fullName}`,
+        title: `${d.reference} · ${d.client?.fullName ?? d.lead?.fullName ?? "—"}`,
         subtitle: `${d.property.reference} · ${formatMoneyCompact(d.amount)}`,
         badge: DEAL_STATUS_META[d.status].label,
         href: `/deals/${d.id}`,
@@ -194,11 +194,11 @@ export async function lookup(actor: Actor, type: LookupType, raw: string, take =
     case "deal": {
       const rows = await db.deal.findMany({
         where: { AND: [scope.deals(actor), q ? { OR: [{ reference: like(q) }, { client: { fullName: like(q) } }] } : {}] },
-        select: { id: true, reference: true, client: { select: { fullName: true } }, status: true },
+        select: { id: true, reference: true, client: { select: { fullName: true } }, lead: { select: { fullName: true } }, status: true },
         orderBy: { updatedAt: "desc" },
         take,
       });
-      return rows.map((r) => ({ id: r.id, label: `${r.reference} · ${r.client.fullName}`, hint: DEAL_STATUS_META[r.status].label }));
+      return rows.map((r) => ({ id: r.id, label: `${r.reference} · ${r.client?.fullName ?? r.lead?.fullName ?? "—"}`, hint: DEAL_STATUS_META[r.status].label }));
     }
   }
 }

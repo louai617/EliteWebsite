@@ -41,3 +41,21 @@ export const APP_URL = (process.env.APP_URL ?? "").replace(/\/+$/, "");
 export function publicOrigin(request: Request) {
   return APP_URL || new URL(request.url).origin;
 }
+
+/**
+ * Outgoing e-mail (password codes, booking and reservation e-mails). With no SMTP_HOST, e-mails
+ * are written to storage/outbox in development (and not sent); in production they fail loudly
+ * in the log and the team gets a task instead.
+ */
+export const MAIL = {
+  host: process.env.SMTP_HOST ?? "",
+  port: Number(process.env.SMTP_PORT ?? 587),
+  /** true for port 465 (implicit TLS); STARTTLS is used otherwise. */
+  secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === "true" : Number(process.env.SMTP_PORT ?? 587) === 465,
+  user: process.env.SMTP_USER ?? "",
+  pass: process.env.SMTP_PASS ?? "",
+  from: process.env.MAIL_FROM ?? "ELITE Real Estate <no-reply@eliterealestate.qa>",
+  replyTo: process.env.MAIL_REPLY_TO ?? "",
+};
+
+export const mailConfigured = () => Boolean(MAIL.host);

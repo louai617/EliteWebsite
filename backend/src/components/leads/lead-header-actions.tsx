@@ -3,44 +3,26 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { ChevronDown, Pencil, UserCheck, UserRoundPlus } from "lucide-react";
-import type { LeadStatus } from "@/generated/prisma/enums";
-import { assignLeadAction, convertLeadAction, deleteLeadAction, setLeadStatusAction } from "@/actions/leads";
+import { assignLeadAction, convertLeadAction, deleteLeadAction } from "@/actions/leads";
 import { useAction } from "@/hooks/use-action";
-import { LEAD_PIPELINE, LEAD_STATUS_META } from "@/lib/constants";
 import type { AgentOption, Viewer } from "@/types/options";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { DeleteRecordButton } from "@/components/shared/delete-record-button";
 import { LeadSheet, type LeadRecord } from "./lead-form";
+import { LeadStageControls, type StageInfo } from "./lead-stage";
 
 const UNASSIGNED = "__none__";
 
-export function LeadHeaderActions({ lead, clientId, agents, viewer }: { lead: LeadRecord; clientId: string | null; agents: AgentOption[]; viewer: Viewer }) {
+export function LeadHeaderActions({ lead, clientId, agents, viewer, stage }: { lead: LeadRecord; clientId: string | null; agents: AgentOption[]; viewer: Viewer; stage: StageInfo }) {
   const router = useRouter();
   const [editing, setEditing] = useState(false);
-  const status = useAction(setLeadStatusAction);
   const assign = useAction(assignLeadAction);
   const convert = useAction(convertLeadAction, { onSuccess: (r) => router.push(`/clients/${r.clientId}`) });
 
   return (
     <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <Button variant="outline" loading={status.pending}>
-            {LEAD_STATUS_META[lead.status].label} <ChevronDown className="opacity-60" />
-          </Button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-48">
-          <DropdownMenuLabel>Move to stage</DropdownMenuLabel>
-          <DropdownMenuRadioGroup value={lead.status} onValueChange={(v) => void status.run({ id: lead.id, status: v as LeadStatus })}>
-            {LEAD_PIPELINE.map((s) => (
-              <DropdownMenuRadioItem key={s} value={s}>
-                {LEAD_STATUS_META[s].label}
-              </DropdownMenuRadioItem>
-            ))}
-          </DropdownMenuRadioGroup>
-        </DropdownMenuContent>
-      </DropdownMenu>
+      <LeadStageControls info={stage} />
 
       {viewer.isManager && (
         <DropdownMenu>

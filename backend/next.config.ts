@@ -11,8 +11,8 @@ const nextConfig: NextConfig = {
     // Enables forbidden()/unauthorized() for role-gated pages.
     authInterrupts: true,
     serverActions: {
-      // Property photo uploads go through a Server Action (images are capped at 8 MB).
-      bodySizeLimit: "9mb",
+      // Photo (8 MB) and document (10 MB) uploads go through Server Actions.
+      bodySizeLimit: "11mb",
     },
   },
   poweredByHeader: false,

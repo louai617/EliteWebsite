@@ -7,6 +7,7 @@ import { Phone, MessageSquare, Mail, Clock, BadgeCheck, Share2, Check, UserRound
 import type { ListingAgent } from '@/lib/listing-types';
 import SaveButton from '@/components/listings/SaveButton';
 import BookViewing from '@/components/listings/BookViewing';
+import ReserveHome from '@/components/listings/ReserveHome';
 
 interface AgentPanelProps {
   agent: ListingAgent;
@@ -16,9 +17,11 @@ interface AgentPanelProps {
   shareTitle: string;
   /** Agency phone when the listing has no assigned agent. */
   fallbackPhone?: string;
+  /** Show "Reserve this home" (listing is available). */
+  reservable?: boolean;
 }
 
-export default function AgentPanel({ agent, propertyId, shareTitle, fallbackPhone }: AgentPanelProps) {
+export default function AgentPanel({ agent, propertyId, shareTitle, fallbackPhone, reservable = false }: AgentPanelProps) {
   const t = useTranslations('property');
   const locale = useLocale();
   const isRtl = locale === 'ar';
@@ -89,6 +92,7 @@ export default function AgentPanel({ agent, propertyId, shareTitle, fallbackPhon
 
       <div className="mt-5 grid gap-2.5">
         <BookViewing reference={propertyId} agentName={name} />
+        {reservable && <ReserveHome reference={propertyId} />}
         {phone && (
         <a
           href={`tel:${phone.replace(/\s+/g, '')}`}

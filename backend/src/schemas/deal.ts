@@ -4,11 +4,11 @@ import { id, money, optionalDate, optionalId, optionalText, percent } from "./co
 
 const dealFields = z.object({
   propertyId: id,
-  clientId: id,
+  /** Empty while the deal is pending: closing the deal turns the lead into a client. */
+  clientId: optionalId,
   leadId: optionalId,
   agentId: optionalId,
   type: z.enum(DealType),
-  status: z.enum(DealStatus),
   amount: money("Deal amount"),
   commissionPercent: percent,
   agentSharePercent: percent,
@@ -17,7 +17,14 @@ const dealFields = z.object({
   notes: optionalText(4000),
 });
 
-export const dealSchema = dealFields;
+const needsParty = (v: { clientId: string | null; leadId: string | null }) => Boolean(v.clientId || v.leadId);
+const partyIssue = { path: ["clientId"], message: "Choose the client or the lead this deal is for" };
+
+export const dealSchema = dealFields.refine(needsParty, partyIssue);
 export type DealInput = z.input<typeof dealSchema>;
-export const updateDealSchema = dealFields.extend({ id });
-export const dealStatusSchema = z.object({ id, status: z.enum(DealStatus) });
+export const updateDealSchema = dealFields.extend({ id }).refine(needsParty, partyIssue);
+
+/** Pending contract → Closed / Cancelled (a reason is required to cancel). */
+export const dealStatusSchema = z
+  .object({ id, status: z.enum(DealStatus), reason: optionalText(500) })
+  .refine((v) => v.status !== "CANCELLED" || (v.reason?.length ?? 0) >= 5, { path: ["reason"], message: "Write why the deal was cancelled" });

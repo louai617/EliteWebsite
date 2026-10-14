@@ -71,7 +71,7 @@ export async function portalOverview(actor: PortalActor, baseUrl: string) {
     db.client.findUnique({ where: { id: clientId }, select: { id: true, fullName: true, email: true, phone: true, clientType: true, budgetMin: true, budgetMax: true, requirements: true, agent: agentContact } }),
     db.propertyInterest.count({ where: { clientId } }),
     db.viewing.findMany({ where: { clientId, status: { in: ["SCHEDULED", "CONFIRMED"] }, startsAt: { gte: now } }, orderBy: { startsAt: "asc" }, take: 5, select: { id: true, startsAt: true, endsAt: true, status: true, bookedByClient: true, agent: agentContact, property: { select: portalPropertySelect } } }),
-    db.deal.count({ where: { clientId, status: { notIn: ["CLOSED_WON", "CLOSED_LOST"] } } }),
+    db.deal.count({ where: { OR: [{ clientId }, { lead: { clientId } }], status: "PENDING_CONTRACT" } }),
     db.lead.count({ where: { clientId, status: { notIn: ["WON", "LOST"] } } }),
     db.task.count({ where: { clientId, clientVisible: true, status: { in: ["TODO", "IN_PROGRESS"] } } }),
     db.propertyInterest.findMany({ where: { clientId, priceAtSave: { not: null } }, select: { priceAtSave: true, property: { select: { price: true } } } }),
@@ -152,7 +152,7 @@ export async function portalReports(actor: PortalActor) {
   const clientId = clientIdOf(actor);
   const [deals, viewingsByStatus, enquiries] = await Promise.all([
     db.deal.findMany({
-      where: { clientId },
+      where: { OR: [{ clientId }, { lead: { clientId } }] },
       orderBy: { createdAt: "desc" },
       select: { id: true, reference: true, type: true, status: true, amount: true, contractDate: true, closingDate: true, closedAt: true, createdAt: true, property: { select: { id: true, reference: true, title: true, area: true } }, agent: agentContact },
     }),
@@ -160,7 +160,7 @@ export async function portalReports(actor: PortalActor) {
     db.lead.count({ where: { clientId } }),
   ]);
   const viewings = Object.fromEntries(viewingsByStatus.map((v) => [v.status, v._count._all]));
-  return { deals, summary: { enquiries, viewingsCompleted: viewings.COMPLETED ?? 0, viewingsScheduled: viewings.SCHEDULED ?? 0, dealsOpen: deals.filter((d) => !d.status.startsWith("CLOSED")).length, dealsCompleted: deals.filter((d) => d.status === "CLOSED_WON").length } };
+  return { deals, summary: { enquiries, viewingsCompleted: viewings.COMPLETED ?? 0, viewingsScheduled: viewings.SCHEDULED ?? 0, dealsOpen: deals.filter((d) => d.status === "PENDING_CONTRACT").length, dealsCompleted: deals.filter((d) => d.status === "CLOSED").length } };
 }
 
 /** Curated, client-safe timeline (built from records, not from the internal audit log). */
@@ -168,7 +168,7 @@ export async function portalActivity(actor: PortalActor) {
   const clientId = clientIdOf(actor);
   const [viewings, deals, interests, leads, tasks] = await Promise.all([
     db.viewing.findMany({ where: { clientId }, orderBy: { updatedAt: "desc" }, take: 50, select: { id: true, status: true, startsAt: true, createdAt: true, updatedAt: true, property: { select: { reference: true, title: true } } } }),
-    db.deal.findMany({ where: { clientId }, orderBy: { updatedAt: "desc" }, take: 50, select: { id: true, reference: true, status: true, createdAt: true, updatedAt: true, property: { select: { reference: true, title: true } } } }),
+    db.deal.findMany({ where: { OR: [{ clientId }, { lead: { clientId } }] }, orderBy: { updatedAt: "desc" }, take: 50, select: { id: true, reference: true, status: true, createdAt: true, updatedAt: true, property: { select: { reference: true, title: true } } } }),
     db.propertyInterest.findMany({ where: { clientId }, orderBy: { createdAt: "desc" }, take: 50, select: { id: true, createdAt: true, property: { select: { reference: true, title: true } } } }),
     db.lead.findMany({ where: { clientId }, orderBy: { createdAt: "desc" }, take: 50, select: { id: true, createdAt: true, interestedArea: true } }),
     db.task.findMany({ where: { clientId, clientVisible: true, status: "COMPLETED" }, orderBy: { completedAt: "desc" }, take: 50, select: { id: true, title: true, completedAt: true } }),
@@ -237,7 +237,7 @@ async function createLeadRecord(input: {
   return db.$transaction(async (tx) => {
     const lead = await tx.lead.create({
       data: {
-        fullName: input.fullName, phone: input.phone, email: input.email, source: input.source, clientId: input.clientId, agentId: input.agentId,
+        fullName: input.fullName, phone: input.phone, email: input.email, source: input.source, clientId: input.clientId, agentId: input.agentId, assignedAt: input.agentId ? new Date() : null,
         purpose: input.property?.purpose, interestedArea: input.property?.area,
         notes: [input.label, input.property ? `Listing ${input.property.reference}` : null, input.message].filter(Boolean).join("\n"),
         ...(input.property ? { interests: { create: { propertyId: input.property.id } } } : {}),

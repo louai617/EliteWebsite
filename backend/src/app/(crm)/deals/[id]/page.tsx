@@ -1,11 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
-import { Check } from "lucide-react";
+import { Check, XCircle } from "lucide-react";
 import type { DealStatus } from "@/generated/prisma/enums";
 import { requireUser } from "@/lib/auth/session";
 import { toViewer } from "@/lib/viewer";
-import { CUSTOMER_TYPE_META, DEAL_STATUS_META, DEAL_TYPE_META, LEAD_STATUS_META, PROPERTY_STATUS_META } from "@/lib/constants";
+import { CLIENT_DOCUMENT_KINDS, CUSTOMER_TYPE_META, DEAL_STATUS_META, DEAL_TYPE_META, LEAD_STATUS_META, PROPERTY_STATUS_META } from "@/lib/constants";
 import { formatDate, formatMoney } from "@/lib/format";
 import { cn } from "@/lib/utils";
 import { getDeal } from "@/services/deals";
@@ -14,6 +14,8 @@ import { timeline } from "@/services/activity";
 import { listAssignableUsers } from "@/services/users";
 import { getSettings } from "@/services/settings";
 import { listTasks } from "@/services/tasks";
+import { listDocuments } from "@/services/documents";
+import { autoValues, listTemplates } from "@/services/contracts";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
 import { EnumBadge } from "@/components/shared/enum-badge";
@@ -25,27 +27,38 @@ import { PropertyImage } from "@/components/shared/property-image";
 import { RecordActions } from "@/components/shared/record-actions";
 import { DealHeaderActions } from "@/components/deals/deal-header-actions";
 import { TaskList } from "@/components/tasks/task-list";
+import { DocumentsPanel } from "@/components/documents/documents-panel";
+import { ContractsPanel } from "@/components/contracts/contracts-panel";
 
 export const metadata: Metadata = { title: "Deal" };
 
-const STEPS: DealStatus[] = ["NEGOTIATION", "CONTRACT_PENDING", "CONTRACT_SIGNED", "CLOSED_WON"];
+const STEPS: { status: DealStatus; label: string }[] = [
+  { status: "PENDING_CONTRACT", label: "Won · pending contract" },
+  { status: "CLOSED", label: "Closed · client" },
+];
 
-function StatusSteps({ status }: { status: DealStatus }) {
-  if (status === "CLOSED_LOST") {
-    return <p className="rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">This deal was closed as lost.</p>;
+function StatusSteps({ status, reason }: { status: DealStatus; reason: string | null }) {
+  if (status === "CANCELLED") {
+    return (
+      <p className="flex items-start gap-2 rounded-md border border-rose-200 bg-rose-50 px-3 py-2 text-sm text-rose-700">
+        <XCircle className="mt-0.5 size-4 shrink-0" />
+        <span>
+          This deal was cancelled{reason ? `: ${reason}` : "."}
+        </span>
+      </p>
+    );
   }
-  const current = STEPS.indexOf(status);
   return (
-    <ol className="grid grid-cols-4 gap-1.5" aria-label="Deal progress">
+    <ol className="grid grid-cols-2 gap-1.5" aria-label="Deal progress">
       {STEPS.map((step, i) => {
-        const done = i < current || status === "CLOSED_WON";
-        const active = i === current && status !== "CLOSED_WON";
+        const done = status === "CLOSED" || i === 0;
+        const active = step.status === status && status !== "CLOSED";
         return (
-          <li key={step} className="min-w-0">
-            <div className={cn("h-1.5 rounded-full bg-border", done && "bg-emerald-500", active && "bg-gold")} />
+          <li key={step.status} className="min-w-0">
+            <div className={cn("h-1.5 rounded-full bg-border", done && !active && "bg-emerald-500", active && "bg-gold")} />
             <p className={cn("mt-1.5 flex items-center gap-1 truncate text-xs text-muted-foreground", (done || active) && "font-medium text-foreground")}>
-              {done && <Check className="size-3 text-emerald-600" />}
-              {DEAL_STATUS_META[step].label}
+              {done && !active && <Check className="size-3 text-emerald-600" />}
+              {step.label}
             </p>
           </li>
         );
@@ -60,13 +73,20 @@ export default async function DealPage({ params }: PageProps<"/deals/[id]">) {
   const deal = await getDeal(user, id);
   if (!deal) notFound();
   const viewer = toViewer(user);
-  const [notes, activity, agents, settings, tasks] = await Promise.all([
+  const [notes, activity, agents, settings, tasks, documents, templates, filled] = await Promise.all([
     listNotes("deal", id),
     timeline("dealId", id, 40),
     listAssignableUsers(),
     getSettings(),
     listTasks(user, { page: 1, pageSize: 50, sort: "dueDate", dir: "asc" }, { dealId: id }).then((r) => r.items),
+    listDocuments(user, "deal", id),
+    listTemplates({ activeOnly: true }),
+    autoValues(user, id),
   ]);
+  const party = deal.client ?? deal.lead;
+  const templateOptions = templates
+    .filter((t) => !t.dealType || t.dealType === deal.type)
+    .map((t) => ({ id: t.id, name: t.name, description: t.description, body: t.body, fields: t.fields }));
 
   return (
     <>
@@ -76,7 +96,7 @@ export default async function DealPage({ params }: PageProps<"/deals/[id]">) {
           <span className="flex items-center gap-2">
             <span className="font-mono">{deal.reference}</span>
             <span className="text-muted-foreground">·</span>
-            <span className="truncate">{deal.client.fullName}</span>
+            <span className="truncate">{party?.fullName ?? "—"}</span>
           </span>
         }
         description={
@@ -90,7 +110,11 @@ export default async function DealPage({ params }: PageProps<"/deals/[id]">) {
         actions={<DealHeaderActions deal={deal} defaults={settings} agents={agents} viewer={viewer} />}
       >
         <div className="flex flex-wrap gap-2">
-          <RecordActions agents={agents} viewer={viewer} task={{ dealId: deal.id, dealOption: { id: deal.id, label: deal.reference }, clientId: deal.clientId, clientOption: { id: deal.client.id, label: deal.client.fullName } }} />
+          <RecordActions
+            agents={agents}
+            viewer={viewer}
+            task={{ dealId: deal.id, dealOption: { id: deal.id, label: deal.reference }, clientId: deal.clientId ?? undefined, clientOption: deal.client ? { id: deal.client.id, label: deal.client.fullName } : null }}
+          />
         </div>
       </PageHeader>
 
@@ -98,7 +122,7 @@ export default async function DealPage({ params }: PageProps<"/deals/[id]">) {
         <div className="min-w-0 space-y-5">
           <Card>
             <CardContent className="space-y-5 pt-5">
-              <StatusSteps status={deal.status} />
+              <StatusSteps status={deal.status} reason={deal.cancelReason} />
               <div className="grid gap-3 sm:grid-cols-4">
                 {[
                   { label: deal.type === "RENTAL" ? "Contract value" : "Sale price", value: formatMoney(deal.amount), strong: true },
@@ -150,10 +174,44 @@ export default async function DealPage({ params }: PageProps<"/deals/[id]">) {
                 <InfoList
                   columns={1}
                   items={[
-                    { label: `Client · ${CUSTOMER_TYPE_META[deal.client.clientType].label}`, value: <Link href={`/clients/${deal.client.id}`} className="hover:underline">{deal.client.fullName} · {deal.client.phone}</Link> },
+                    deal.client
+                      ? { label: `Client · ${CUSTOMER_TYPE_META[deal.client.clientType].label}`, value: <Link href={`/clients/${deal.client.id}`} className="hover:underline">{deal.client.fullName} · {deal.client.phone}</Link> }
+                      : { label: "Client", value: <span className="text-muted-foreground">Created from the lead when the deal closes</span> },
                     { label: "Owner", value: deal.owner && <Link href={`/owners/${deal.owner.id}`} className="hover:underline">{deal.owner.fullName} · {deal.owner.phone}</Link> },
                     { label: "Originating lead", value: deal.lead && <span className="flex items-center gap-2"><Link href={`/leads/${deal.lead.id}`} className="hover:underline">{deal.lead.fullName}</Link><EnumBadge meta={LEAD_STATUS_META} value={deal.lead.status} /></span> },
                   ]}
+                />
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Contracts</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ContractsPanel
+                  dealId={deal.id}
+                  contracts={deal.contracts}
+                  templates={templateOptions}
+                  autoValues={filled.values}
+                  canGenerate={deal.status !== "CANCELLED"}
+                />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Documents</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <DocumentsPanel
+                  target="deal"
+                  targetId={deal.id}
+                  documents={documents}
+                  kinds={["CONTRACT", ...CLIENT_DOCUMENT_KINDS.filter((k) => k !== "CONTRACT")]}
+                  canDelete={viewer.isManager}
+                  emptyText="The booking form and payment proof appear here when the lead is won."
                 />
               </CardContent>
             </Card>

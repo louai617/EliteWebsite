@@ -51,7 +51,7 @@ Change these before using real data.
 | --- | --- |
 | `npm run dev` / `build` / `start` | Next.js |
 | `npm run typecheck` / `lint` | `next typegen && tsc`, ESLint |
-| `npm test` | Service test-suites (RBAC, validation, commission, hierarchy, imports, tasks, daily reports & rollover, scoring, client isolation, public listings, website bookings, saved homes, recommendations) on a throwaway `test.db` |
+| `npm test` | Service test-suites (RBAC, validation, commission, hierarchy, imports, tasks, daily reports & rollover, scoring, client isolation, public listings, website bookings, saved homes, recommendations, password reset, lead rules, deals, contracts, documents, reservations) on a throwaway `test.db` |
 | `npm run db:backup` | Online copy of the SQLite database to `backups/` (do this before migrating) |
 | `npm run import:website-listings` | Import the website's former hard-coded listings (`samples/website-listings.json`); idempotent by reference |
 | `npm run cron:daily` | Run the daily rollover once (for a system cron) |
@@ -73,6 +73,8 @@ Change these before using real data.
 | `CLIENT_APP_URL` | Website origin (default `http://localhost:3001`); CORS default, portal redirect, "view on website" links. |
 | `WEBSITE_REVALIDATE_SECRET` | Shared with the website's `REVALIDATE_SECRET`; enables instant website refresh after property changes. Empty = website refreshes within 60 s. |
 | `WEBSITE_REVALIDATE_URL` | Optional; defaults to `CLIENT_APP_URL/api/revalidate`. |
+| `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` | Outgoing e-mail (password codes, viewing and reservation e-mails). Without `SMTP_HOST`: saved to `storage/outbox` in development, failure (+ a task for the team) in production. |
+| `MAIL_FROM` / `MAIL_REPLY_TO` | Sender, e.g. `ELITE Real Estate <no-reply@eliterealestate.qa>`. |
 | `CORS_ORIGINS` | Optional comma-separated allow-list for browser calls to `/api`. |
 | `CLIENT_PORTAL_URL` | Optional; where CLIENT accounts are sent from the CRM. |
 | `SESSION_COOKIE_SAMESITE` / `SESSION_COOKIE_DOMAIN` | Optional cookie settings for split-domain deployments. |
@@ -192,7 +194,8 @@ Cookie-authenticated writes must come from an allowed origin (CSRF check); CORS 
 
 | Area | Endpoints |
 | --- | --- |
-| Auth | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/register` (always a CLIENT), `POST /auth/password`, `POST /auth/forgot-password` |
+| Auth | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/register` (always a CLIENT), `POST /auth/password`, `POST /auth/forgot-password` (e-mails a 6-digit code), `POST /auth/verify-reset-code` (→ reset token), `POST /auth/reset-password` |
+| Documents | `GET /documents/:id` (`?download=1`) — streams a file after a permission check (staff: records in scope; clients: their own file) |
 | Users | `GET/POST /users`, `GET/PUT /users/:id` (admins/managers) |
 | Clients | `GET/POST /clients`, `GET/PUT/DELETE /clients/:id`, `GET/POST/DELETE /clients/:id/portal-access` |
 | Leads | `GET/POST /leads`, `GET/PUT/DELETE /leads/:id`, `POST /leads/:id/status`, `POST /leads/:id/assign` |
@@ -203,12 +206,48 @@ Cookie-authenticated writes must come from an allowed origin (CSRF check); CORS 
 | Performance | `GET /performance`, `GET /performance/:agentId`, `GET/PUT/DELETE /performance/scoring` |
 | Imports | `GET/POST /integrations/property-finder`, `GET/POST /integrations/qatar-living`, `GET /migrations`, `GET /migrations/:id` |
 | Client portal | `GET /portal/overview`, `/portal/properties`, `/portal/viewings`, `/portal/leads`, `/portal/tasks`, `/portal/reports`, `/portal/activity`, `/portal/data`, `GET/PATCH /portal/account`, `POST /portal/enquiries` |
+| Client documents & reservations | `GET/POST /portal/documents` (multipart: `kind`, `file`, `number?`, `expiresAt?`, `reservationId?`), `GET /portal/reservations/quote?property=REF`, `GET/POST /portal/reservations` (`method: FAWRAN`; `CARD` is "coming soon"), `PATCH/DELETE /portal/reservations/:id` |
 | Client dashboard | `GET /portal/bookings/slots?property&date`, `GET/POST /portal/bookings`, `PATCH/DELETE /portal/bookings/:id` (reschedule / cancel with reason), `GET /portal/bookings/:id/calendar` (.ics), `GET/POST /portal/saved`, `DELETE /portal/saved/:ref`, `GET/PUT /portal/preferences`, `GET /portal/recommendations` |
 | Public | `GET /public/properties` (`q`, `purpose`, `category`, `type`, `area`, `beds`, `priceMin`, `priceMax`, `featured`, `sort`, `page`, `pageSize`), `GET /public/properties/:ref` (details, agent card, market data, similar homes), `POST /public/leads` (website forms & chat; rate-limited, honeypot), `GET /health` |
 | Cron | `POST /cron/daily-rollover` (`Authorization: Bearer $CRON_SECRET`) |
 
 The CRM UI itself uses Server Actions over the same service layer; `/api/search` and
 `/api/lookup` serve its pickers.
+
+### Sales workflow rules
+
+All enforced in the service layer (board, menus, forms and API alike):
+
+- **Viewing step** — a lead moves to *Negotiation* only with a `VIEWING_FORM` document on the
+  lead or an approved `LeadPassRequest` (agents ask, managers approve; a manager's own request
+  is approved at once).
+- **Won** (`markLeadWon`) — requires the viewing step plus `BOOKING_FORM` and `PROOF_OF_PAYMENT`
+  documents (on the lead or its client). Opens the deal as `PENDING_CONTRACT`, reserves the
+  property, moves the paperwork onto the deal and gives the agent a "Prepare the contract" task.
+- **Lost** (`markLeadLost`) — requires a reason (`Lead.lostReason`).
+- **Deals** — `PENDING_CONTRACT → CLOSED | CANCELLED`, managers only. Closing converts the lead
+  into a client (`services/lead-conversion.ts`, documents and viewings move with it), marks the
+  property Sold/Rented and opens an "add the client's documents" task. Cancelling needs a
+  reason, releases the property and marks the lead Lost. Manual deals are manager-only.
+- **24-hour rule** — `reassignStaleLeads()` (scheduler / cron) moves leads still `NEW` with an
+  agent `Settings.leadAutoReassignHours` after `Lead.assignedAt` to `leadEscalationUserId` (or
+  the first admin). `bulkReassignLeads()` moves an agent's open leads in one go.
+- **Contracts** — `ContractTemplate` (admin-edited text with `{{placeholders}}` + fields for
+  agents) → `Contract` (rendered snapshot with its values and template version). Rendering
+  escapes everything (`lib/contract-format.ts`); printable page at `/contracts/:id`.
+- **Reservations** — `AWAITING_PAYMENT → PAYMENT_SUBMITTED` (client uploads the Fawran / transfer
+  receipt) `→ CONFIRMED` (staff verify; property Reserved) or `CANCELLED`; unpaid ones expire
+  after `Settings.reservationHoldHours`. Deposit = listing's `bookingDeposit`, else
+  `saleDepositPercent` of the price or `rentDepositMonths` of rent.
+
+### Documents & e-mail
+
+Documents (PDF/JPG/PNG/WebP, ≤ 10 MB, type checked from the bytes) are stored under
+`storage/documents/` with random names and only served by `/api/documents/:id`
+(`Content-Security-Policy: sandbox`, `no-store`). Only managers delete them; uploads and deletes
+are in the activity log. E-mails use branded templates (`services/email-templates.ts`, logo
+attached inline) sent by `services/mail.ts`; every attempt is logged in `EmailLog` without the
+body. Password codes and reset tokens are stored only as keyed hashes (`OtpCode`).
 
 ### Website sync
 
@@ -293,6 +332,13 @@ highlights, nearby, payment plan …), `Viewing.bookedByClient`/`clientNote`,
 `PropertyInterest.priceAtSave` (backfilled with the current price) and client search
 preferences. Every row is copied; nothing is deleted.
 
+Migration `20261014113605_lead_rules_documents_contracts` adds `Document`, `LeadPassRequest`,
+`OtpCode`, `EmailLog`, `Reservation`, `ContractTemplate` and `Contract`, lead fields
+(`lostReason`, `assignedAt`, `autoReassignedAt`), payment settings, `Property.bookingDeposit`
+and makes `Deal.clientId` optional. Deal statuses are mapped (Negotiation / Contract pending /
+Contract signed → Pending contract, Closed won → Closed, Closed lost → Cancelled with a note);
+`assignedAt` starts at migration time. Nothing is deleted.
+
 Before migrating a database with real data: `npm run db:backup` (writes `backups/dev-<time>.db`),
 then `npm run db:deploy`. To roll back, stop the server and copy the backup over the database
 file. Never run `db:seed` / `db:reset` on real data — they wipe the CRM tables.
@@ -302,6 +348,7 @@ file. Never run `db:seed` / `db:reset` on real data — they wipe the CRM tables
 `User` · `Session` · `Owner` · `Property` · `PropertyImage` · `PropertyInterest`
 (lead/client ↔ property) · `Lead` · `Client` · `Viewing` · `Deal` · `Task` · `TaskEvent` ·
 `DailyTaskTemplate` · `AgentActivity` · `DailyReport` · `ScoringRule` · `SystemJob` ·
+`Document` · `LeadPassRequest` · `Reservation` · `ContractTemplate` · `Contract` · `OtpCode` · `EmailLog` ·
 `ExternalListing` · `ImportRun` · `ImportRecord` · `Note` · `Activity` · `Settings` ·
 `Counter` (ELT-/DL- references).
 
@@ -323,9 +370,12 @@ filtered/sorted column. Money is stored in whole QAR (`Int`).
   `/api/uploads/...` to signed-in users). Use object storage (S3/R2) before running several
   instances; `src/services/storage.ts` is the only file to change.
 - The login rate limiter is in-memory (per process).
-- No e-mail delivery yet. "Forgot password" on the website opens a task for the team, who
-  verify the person and set a new password (staff: **Users**; clients: the client's
-  **Client portal** card).
+- E-mail needs an SMTP account (`SMTP_*`). Until it is set, production password resets fall back
+  to a task for the team.
+- Online card payments are not connected yet ("coming soon"); reservations are paid by Fawran /
+  bank transfer and verified by staff.
+- Documents are stored on local disk like photos; move them to private object storage before
+  running several instances.
 - The in-process scheduler suits a single server; use the cron endpoint for several instances.
 - Import field mappings are provisional until verified against real portal exports.
 - The seed uses Unsplash photo URLs; they need internet access to display.

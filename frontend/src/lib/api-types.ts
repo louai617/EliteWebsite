@@ -171,3 +171,75 @@ export interface Preferences {
   requirements: string | null;
   options: { areas: string[]; types: { value: string; label: string }[] };
 }
+
+// ───────── Documents, reservations & payments ─────────
+
+export type ClientDocumentKind = 'QID' | 'PASSPORT' | 'VISA' | 'TRADE_LICENSE' | 'PROOF_OF_PAYMENT' | 'OTHER' | 'CONTRACT' | 'BOOKING_FORM';
+
+export interface PortalDocument {
+  id: string;
+  kind: ClientDocumentKind;
+  title: string | null;
+  number: string | null;
+  expiresAt: string | null;
+  fileName: string;
+  mimeType: string;
+  size: number;
+  uploadedByClient: boolean;
+  createdAt: string;
+  reservationId: string | null;
+}
+
+export interface BankDetails {
+  bankName: string | null;
+  accountName: string | null;
+  iban: string | null;
+  accountNumber: string | null;
+  swift: string | null;
+  fawranAlias: string | null;
+  instructions: string | null;
+}
+
+export interface PaymentMethodOption {
+  method: 'FAWRAN' | 'CARD';
+  label: string;
+  enabled: boolean;
+  comingSoon: boolean;
+}
+
+export interface PaymentOptions {
+  methods: PaymentMethodOption[];
+  bank: BankDetails;
+  holdHours: number;
+}
+
+export type ReservationStatus = 'AWAITING_PAYMENT' | 'PAYMENT_SUBMITTED' | 'CONFIRMED' | 'CANCELLED';
+
+export interface Reservation {
+  id: string;
+  reference: string;
+  status: ReservationStatus;
+  amount: number;
+  currency: string;
+  method: 'FAWRAN' | 'CARD';
+  payBy: string;
+  payerName: string | null;
+  paymentReference: string | null;
+  submittedAt: string | null;
+  verifiedAt: string | null;
+  cancelReason: string | null;
+  createdAt: string;
+  canCancel: boolean;
+  canUpload: boolean;
+  agent: { name: string; phone: string | null; email: string } | null;
+  documents: { id: string; kind: string; fileName: string; createdAt: string }[];
+  property: ListingCard;
+}
+
+export interface ReservationQuote extends PaymentOptions {
+  property: { reference: string; title: string; price: number; currency: string; purpose: 'SALE' | 'RENT' };
+  available: boolean;
+  amount: number;
+  currency: string;
+  existing: { id: string; reference: string; status: ReservationStatus } | null;
+}

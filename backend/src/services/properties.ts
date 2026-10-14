@@ -172,7 +172,7 @@ export async function getProperty(actor: Actor, id: string) {
       deals: {
         where: { ...scope.deals(actor) },
         orderBy: { createdAt: "desc" },
-        select: { id: true, reference: true, type: true, status: true, amount: true, commissionAmount: true, createdAt: true, closedAt: true, client: { select: { id: true, fullName: true } } },
+        select: { id: true, reference: true, type: true, status: true, amount: true, commissionAmount: true, createdAt: true, closedAt: true, client: { select: { id: true, fullName: true } }, lead: { select: { id: true, fullName: true } } },
       },
     },
   });

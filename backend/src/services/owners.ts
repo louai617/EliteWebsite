@@ -62,7 +62,7 @@ export async function getOwner(actor: Actor, id: string) {
       },
       deals: {
         orderBy: { createdAt: "desc" },
-        select: { id: true, reference: true, type: true, status: true, amount: true, closedAt: true, createdAt: true, property: { select: { reference: true } }, client: { select: { fullName: true } } },
+        select: { id: true, reference: true, type: true, status: true, amount: true, closedAt: true, createdAt: true, property: { select: { reference: true } }, client: { select: { fullName: true } }, lead: { select: { fullName: true } } },
       },
     },
   });

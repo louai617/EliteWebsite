@@ -222,7 +222,7 @@ async function marketFor(p: DetailRow) {
     db.property.findMany({ where: { city: p.city, purpose: p.purpose, createdAt: { gte: since } }, select: { price: true, areaSqm: true, purpose: true, createdAt: true } }),
     db.property.count({ where: { ...publicWhere, area: p.area } }),
     db.property.findMany({ where: { area: p.area, buildingName: { not: null } }, distinct: ["buildingName"], select: { buildingName: true } }),
-    db.deal.findMany({ where: { status: "CLOSED_WON", closedAt: { gte: since }, property: { area: p.area, purpose: p.purpose } }, select: { amount: true, type: true, closedAt: true, property: { select: { areaSqm: true } } } }),
+    db.deal.findMany({ where: { status: "CLOSED", closedAt: { gte: since }, property: { area: p.area, purpose: p.purpose } }, select: { amount: true, type: true, closedAt: true, property: { select: { areaSqm: true } } } }),
   ]);
   const sameType = comparables.filter((c) => c.type === p.type);
   const pool = sameType.length >= 3 ? sameType : comparables;

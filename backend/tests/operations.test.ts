@@ -22,7 +22,8 @@ import { createDailyTemplate, finalizeDay, getDailyReport, reportRows, runDailyR
 import { getScoringRules, resetScoringRules, updateScoringRules } from "@/services/scoring";
 import { agentPerformance, performanceBoard } from "@/services/performance";
 import { runImport } from "@/services/imports";
-import { registerClientAccount, requestPasswordReset } from "@/services/client-accounts";
+import { registerClientAccount } from "@/services/client-accounts";
+import { requestPasswordReset } from "@/services/password-reset";
 import { createPublicLead, portalLeads, portalOverview, portalProperties, portalTasks } from "@/services/portal";
 import { assignLead } from "@/services/leads";
 import type { Role } from "@/generated/prisma/enums";
@@ -209,7 +210,7 @@ async function main() {
   await requestPasswordReset("ops.a@example.com");
   await requestPasswordReset("ops.a@example.com");
   await requestPasswordReset("nobody@example.com");
-  check("password reset request creates one task, unknown e-mail none", (await db.task.count({ where: { autoKey: { startsWith: `password-reset:${reg.id}` } } })) === 1);
+  check("password reset sends one code per minute, unknown e-mail none", (await db.otpCode.count({ where: { userId: reg.id } })) === 1 && (await db.otpCode.count({ where: { user: { email: "nobody@example.com" } } })) === 0);
 
   console.log(`\noperations tests: ${pass} passed, ${fail} failed`);
   await db.$disconnect();

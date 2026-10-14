@@ -3,6 +3,9 @@ import type { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import type { ViewingStatus } from "@/generated/prisma/enums";
 import { db } from "@/lib/db";
+import { CLIENT_APP_URL } from "@/lib/env";
+import { viewingBooked } from "./email-templates";
+import { queueMail } from "./mail";
 import { conflict, forbidden, notFound } from "@/lib/errors";
 import { canAssignTo, isManager, scope, isStaff, type Actor } from "@/lib/permissions";
 import { VIEWING_STATUS_META } from "@/lib/constants";
@@ -205,7 +208,7 @@ export async function updateViewing(actor: Actor, input: z.output<typeof updateV
 export async function setViewingStatus(actor: Actor, id: string, status: ViewingStatus, notes?: string | null) {
   const current = await scopedViewing(actor, id);
   if (current.status === status && notes === undefined) return current;
-  return db.$transaction(async (tx) => {
+  const result = await db.$transaction(async (tx) => {
     const viewing = await tx.viewing.update({ where: { id }, data: { status, ...(notes !== undefined ? { notes } : {}) }, select: { id: true, status: true } });
     if (current.status !== "COMPLETED" && status === "COMPLETED") await onViewingCompleted(tx, current, { id: actor.id, staff: isStaff(actor) });
     // Confirming a website booking closes its "confirm" task.
@@ -221,6 +224,36 @@ export async function setViewingStatus(actor: Actor, id: string, status: Viewing
     });
     return viewing;
   });
+  if (status === "CONFIRMED" && current.status !== "CONFIRMED") await emailViewingConfirmed(id);
+  return result;
+}
+
+/** Tells the client (by e-mail) that the agent confirmed their viewing. */
+async function emailViewingConfirmed(id: string) {
+  const v = await db.viewing.findUnique({
+    where: { id },
+    select: {
+      startsAt: true,
+      client: { select: { fullName: true, email: true, portalUser: { select: { email: true } } } },
+      lead: { select: { fullName: true, email: true } },
+      agent: { select: { name: true, phone: true } },
+      property: { select: { reference: true, title: true, buildingName: true, street: true, area: true, city: true } },
+    },
+  });
+  const person = v?.client ?? v?.lead;
+  const to = v?.client?.portalUser?.email ?? person?.email;
+  if (!v || !person || !to) return;
+  const p = v.property;
+  queueMail(
+    to,
+    "viewing-confirmed",
+    viewingBooked({
+      name: person.fullName, property: p.title, reference: p.reference, when: formatDateTime(v.startsAt),
+      address: [p.buildingName, p.street, p.area, p.city].filter(Boolean).join(", "),
+      agent: v.agent ? `${v.agent.name}${v.agent.phone ? ` (${v.agent.phone})` : ""}` : null,
+      manageUrl: `${CLIENT_APP_URL}/en/dashboard/bookings`, confirmed: true,
+    }),
+  );
 }
 
 export async function deleteViewing(actor: Actor, id: string) {

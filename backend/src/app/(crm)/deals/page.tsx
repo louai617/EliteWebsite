@@ -42,7 +42,7 @@ export default async function DealsPage({ searchParams }: PageProps<"/deals">) {
             {result.total} deals · {formatMoney(result.totals.amount)} total value · {formatMoney(result.totals.commission)} commission
           </span>
         }
-        actions={<CreateDealButton agents={agents} viewer={viewer} defaults={settings} openFromUrl />}
+        actions={viewer.isManager ? <CreateDealButton agents={agents} viewer={viewer} defaults={settings} openFromUrl /> : undefined}
       />
       <Toolbar>
         <SearchInput placeholder="Search ref, client, property…" />

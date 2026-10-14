@@ -51,8 +51,8 @@ export async function dashboardStats(actor: Actor) {
     db.lead.count({ where: { AND: [leadScope, { createdAt: { gte: monthStart } }] } }),
     db.lead.count({ where: { AND: [leadScope, { createdAt: { gte: lastMonthStart, lt: monthStart } }] } }),
     db.deal.aggregate({ where: { AND: [dealScope, { status: { in: OPEN_DEAL_STATUSES } }] }, _count: { _all: true }, _sum: { amount: true, commissionAmount: true } }),
-    db.deal.aggregate({ where: { AND: [dealScope, { status: "CLOSED_WON" }] }, _count: { _all: true }, _sum: { amount: true, commissionAmount: true, agentCommission: true } }),
-    db.deal.count({ where: { AND: [dealScope, { status: "CLOSED_LOST" }] } }),
+    db.deal.aggregate({ where: { AND: [dealScope, { status: "CLOSED" }] }, _count: { _all: true }, _sum: { amount: true, commissionAmount: true, agentCommission: true } }),
+    db.deal.count({ where: { AND: [dealScope, { status: "CANCELLED" }] } }),
     db.viewing.count({ where: { AND: [scope.viewings(actor), { startsAt: { gte: now, lt: weekAhead }, status: { in: ["SCHEDULED", "CONFIRMED"] } }] } }),
     db.task.count({
       where: { AND: [scope.tasks(actor), { status: { in: ["TODO", "IN_PROGRESS"] }, dueDate: { lt: now } }] },
@@ -67,7 +67,7 @@ export async function dashboardStats(actor: Actor) {
     }),
     db.lead.findMany({ where: { AND: [leadScope, { createdAt: { gte: first } }] }, select: { createdAt: true } }),
     db.deal.findMany({
-      where: { AND: [dealScope, { status: "CLOSED_WON", closedAt: { gte: first } }] },
+      where: { AND: [dealScope, { status: "CLOSED", closedAt: { gte: first } }] },
       select: { closedAt: true, amount: true, commissionAmount: true },
     }),
   ]);
@@ -141,7 +141,7 @@ export async function teamPerformance(actor: Actor) {
   if (!isManager(actor)) return [];
   const [agents, won, open, leads, viewings] = await Promise.all([
     db.user.findMany({ where: { isActive: true, role: { in: ["AGENT", "MANAGER"] } }, select: { id: true, name: true, avatarUrl: true, role: true }, orderBy: { name: "asc" } }),
-    db.deal.groupBy({ by: ["agentId"], where: { status: "CLOSED_WON" }, _sum: { commissionAmount: true, amount: true }, _count: { _all: true } }),
+    db.deal.groupBy({ by: ["agentId"], where: { status: "CLOSED" }, _sum: { commissionAmount: true, amount: true }, _count: { _all: true } }),
     db.deal.groupBy({ by: ["agentId"], where: { status: { in: OPEN_DEAL_STATUSES } }, _sum: { amount: true }, _count: { _all: true } }),
     db.lead.groupBy({ by: ["agentId"], where: { status: { notIn: ["WON", "LOST"] } }, _count: { _all: true } }),
     db.viewing.groupBy({ by: ["agentId"], where: { status: "COMPLETED" }, _count: { _all: true } }),

@@ -144,7 +144,7 @@ export default async function OwnerPage({ params }: PageProps<"/owners/[id]">) {
                         <Link href={`/deals/${d.id}`} className="font-medium hover:underline">{d.reference}</Link>
                         <p className="text-xs text-muted-foreground">{DEAL_TYPE_META[d.type].label} · {d.property.reference}</p>
                       </TableCell>
-                      <TableCell className="text-[13px]">{d.client.fullName}</TableCell>
+                      <TableCell className="text-[13px]">{d.client?.fullName ?? d.lead?.fullName ?? "—"}</TableCell>
                       <TableCell><EnumBadge meta={DEAL_STATUS_META} value={d.status} /></TableCell>
                       <TableCell className="tabular text-right">{formatMoney(d.amount)}</TableCell>
                     </TableRow>

@@ -54,6 +54,12 @@ npm run dev                    # http://localhost:3001  (start the backend first
   since saving, "no longer available" flag, side-by-side compare of up to 3.
 - **For you / Preferences** — purpose, types, areas, bedrooms, budget → scored matches with
   reasons; the agent sees the same preferences in the CRM.
+- **Reservations** — "Reserve this home" on available listings: deposit, Fawran / bank transfer
+  (card payments shown as "coming soon"), bank details with copy buttons, receipt upload. The
+  Bookings page tracks Reserved → Deposit paid → Confirmed.
+- **Documents** — the client uploads QID / passport / receipts (PDF or photo) and sees contracts
+  and receipts from their agent; files open from the agent app after a permission check.
+- **Forgot password** — e-mail → 6-digit code → new password (`/[locale]/forgot-password`).
 
 ### Other portal pages
 

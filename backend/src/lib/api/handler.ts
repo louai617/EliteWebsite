@@ -37,6 +37,8 @@ interface RouteOptions<B extends z.ZodType | undefined, Q extends z.ZodType | un
   rateLimit?: { limit: number; windowMs: number; key?: string };
   /** Status for a successful response (default 200). */
   status?: number;
+  /** Accept multipart/form-data (file uploads, up to 11 MB) instead of JSON. */
+  multipart?: boolean;
 }
 
 type Infer<T> = T extends z.ZodType ? z.output<T> : undefined;
@@ -55,6 +57,7 @@ type UserFor<A extends Audience> = A extends "public" ? SessionUser | null : Ses
 
 const MUTATING = new Set(["POST", "PUT", "PATCH", "DELETE"]);
 const MAX_BODY_BYTES = 5 * 1024 * 1024;
+const MAX_MULTIPART_BYTES = 11 * 1024 * 1024;
 
 
 function clientIp(request: Request) {
@@ -80,9 +83,20 @@ function originAllowed(request: Request) {
   return origin === self || isAllowedOrigin(origin);
 }
 
-async function parseBody(request: Request) {
+async function parseBody(request: Request, multipart = false) {
   if (!MUTATING.has(request.method)) return undefined;
   const length = Number(request.headers.get("content-length") ?? 0);
+  if (multipart && (request.headers.get("content-type") ?? "").includes("multipart/form-data")) {
+    if (length > MAX_MULTIPART_BYTES) throw new AppError("The file is too large (max 10 MB).", "VALIDATION");
+    const form = await request.formData().catch(() => {
+      throw new AppError("The upload could not be read.", "VALIDATION");
+    });
+    const out: Record<string, FormDataEntryValue> = {};
+    form.forEach((value, key) => {
+      out[key] = value;
+    });
+    return out;
+  }
   if (length > MAX_BODY_BYTES) throw new AppError("Request body is too large.", "VALIDATION");
   const text = await request.text();
   if (!text) return undefined;
@@ -135,7 +149,7 @@ export function apiRoute<A extends Audience, B extends z.ZodType | undefined = u
       }
       if (options.permission && (!user || !hasPermission(user, options.permission))) throw forbidden();
 
-      const rawBody = await parseBody(request);
+      const rawBody = await parseBody(request, options.multipart);
       let body: unknown = undefined;
       if (options.body) {
         const parsed = options.body.safeParse(rawBody ?? {});

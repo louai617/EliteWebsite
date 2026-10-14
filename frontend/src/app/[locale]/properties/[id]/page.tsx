@@ -634,6 +634,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                 propertyId={property._id}
                 shareTitle={title}
                 fallbackPhone={company.contact.phones[0]}
+                reservable={property.status === 'available'}
               />
               <LeadForm propertyId={property._id} />
             </div>

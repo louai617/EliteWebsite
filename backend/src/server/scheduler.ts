@@ -1,4 +1,6 @@
 import { runDailyRollover } from "@/services/daily";
+import { reassignStaleLeads } from "@/services/leads";
+import { expireUnpaidReservations } from "@/services/reservations";
 
 /**
  * In-process scheduler (started from instrumentation.ts when the Node server boots).
@@ -8,10 +10,15 @@ import { runDailyRollover } from "@/services/daily";
  * the rollover is idempotent and guarded by a database row, it is safe with several
  * instances, after restarts and alongside the external cron endpoint.
  *
+ * Every 5 minutes it also applies the 24-hour lead rule (reassignStaleLeads): leads still New
+ * with an agent after Settings.leadAutoReassignHours move to the admin; unpaid reservations past
+ * their pay-by time are released.
+ *
  * Disable with SCHEDULER_ENABLED=false when an external cron calls
  * POST /api/cron/daily-rollover instead (e.g. serverless hosting).
  */
-const g = globalThis as unknown as { __eliteScheduler?: NodeJS.Timeout };
+const g = globalThis as unknown as { __eliteScheduler?: NodeJS.Timeout; __eliteLeadCheckAt?: number };
+const LEAD_CHECK_MS = 5 * 60_000;
 
 export function startScheduler(intervalMs = 60_000) {
   if (g.__eliteScheduler) return;
@@ -22,9 +29,20 @@ export function startScheduler(intervalMs = 60_000) {
     } catch (error) {
       console.error("[scheduler] daily rollover failed", error);
     }
+    if (Date.now() - (g.__eliteLeadCheckAt ?? 0) >= LEAD_CHECK_MS) {
+      g.__eliteLeadCheckAt = Date.now();
+      try {
+        const moved = await reassignStaleLeads();
+        if (moved.moved) console.log(`[scheduler] moved ${moved.moved} untouched new lead(s) to ${moved.to}`);
+        const expired = await expireUnpaidReservations();
+        if (expired) console.log(`[scheduler] released ${expired} unpaid reservation(s)`);
+      } catch (error) {
+        console.error("[scheduler] lead / reservation checks failed", error);
+      }
+    }
   };
   setTimeout(tick, 3_000).unref?.();
   g.__eliteScheduler = setInterval(tick, intervalMs);
   g.__eliteScheduler.unref?.();
-  console.log("[scheduler] started (daily rollover check every minute)");
+  console.log("[scheduler] started (daily rollover every minute, 24-hour lead rule every 5 minutes)");
 }

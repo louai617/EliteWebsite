@@ -27,7 +27,7 @@ export function proxy(request: NextRequest) {
     return response;
   }
 
-  if (pathname === "/login") {
+  if (pathname === "/login" || pathname === "/forgot-password") {
     return NextResponse.next();
   }
 

@@ -8,6 +8,7 @@ import {
   CustomerType,
   DealStatus,
   DealType,
+  DocumentKind,
   Furnishing,
   LeadSource,
   LeadStatus,
@@ -15,11 +16,14 @@ import {
   ImportRecordStatus,
   ImportRunStatus,
   ListingPurpose,
+  PassRequestStatus,
+  PaymentMethod,
   Priority,
   PropertyCategory,
   PropertyStatus,
   PropertySubcategory,
   PropertyType,
+  ReservationStatus,
   Role,
   TaskStatus,
   TaskType,
@@ -209,18 +213,56 @@ export const DEAL_TYPE_META: MetaMap<DealType> = {
 };
 
 export const DEAL_STATUS_META: MetaMap<DealStatus> = {
-  NEGOTIATION: { label: "Negotiation", tone: "amber" },
-  CONTRACT_PENDING: { label: "Contract pending", tone: "blue" },
-  CONTRACT_SIGNED: { label: "Contract signed", tone: "violet" },
-  CLOSED_WON: { label: "Closed won", tone: "green" },
-  CLOSED_LOST: { label: "Closed lost", tone: "red" },
+  PENDING_CONTRACT: { label: "Pending contract", tone: "amber" },
+  CLOSED: { label: "Closed", tone: "green" },
+  CANCELLED: { label: "Cancelled", tone: "red" },
 };
 
-export const OPEN_DEAL_STATUSES: DealStatus[] = [
-  DealStatus.NEGOTIATION,
-  DealStatus.CONTRACT_PENDING,
-  DealStatus.CONTRACT_SIGNED,
-];
+export const OPEN_DEAL_STATUSES: DealStatus[] = [DealStatus.PENDING_CONTRACT];
+
+export const DOCUMENT_KIND_META: MetaMap<DocumentKind> = {
+  VIEWING_FORM: { label: "Viewing form", tone: "amber" },
+  BOOKING_FORM: { label: "Booking form", tone: "violet" },
+  PROOF_OF_PAYMENT: { label: "Proof of payment", tone: "green" },
+  QID: { label: "QID", tone: "blue" },
+  PASSPORT: { label: "Passport", tone: "blue" },
+  VISA: { label: "Visa / residence permit", tone: "teal" },
+  TRADE_LICENSE: { label: "Trade licence (CR)", tone: "slate" },
+  CONTRACT: { label: "Signed contract", tone: "gold" },
+  OTHER: { label: "Other", tone: "neutral" },
+};
+
+/** Identity documents kept on the client's file. */
+export const CLIENT_DOCUMENT_KINDS: DocumentKind[] = ["QID", "PASSPORT", "VISA", "TRADE_LICENSE", "CONTRACT", "BOOKING_FORM", "PROOF_OF_PAYMENT", "OTHER"];
+export const LEAD_DOCUMENT_KINDS: DocumentKind[] = ["VIEWING_FORM", "BOOKING_FORM", "PROOF_OF_PAYMENT", "QID", "PASSPORT", "OTHER"];
+
+export const PASS_STATUS_META: MetaMap<PassRequestStatus> = {
+  PENDING: { label: "Waiting for approval", tone: "amber" },
+  APPROVED: { label: "Approved", tone: "green" },
+  REJECTED: { label: "Rejected", tone: "red" },
+};
+
+export const RESERVATION_STATUS_META: MetaMap<ReservationStatus> = {
+  AWAITING_PAYMENT: { label: "Awaiting payment", tone: "amber" },
+  PAYMENT_SUBMITTED: { label: "Payment to verify", tone: "blue" },
+  CONFIRMED: { label: "Confirmed", tone: "green" },
+  CANCELLED: { label: "Cancelled", tone: "slate" },
+};
+
+export const PAYMENT_METHOD_META: MetaMap<PaymentMethod> = {
+  FAWRAN: { label: "Fawran / bank transfer", tone: "teal" },
+  CARD: { label: "Card (coming soon)", tone: "neutral" },
+};
+
+/** Common reasons offered when a lead is marked Lost (the agent can also write their own). */
+export const LOST_REASONS = [
+  "Budget doesn't match",
+  "Bought / rented elsewhere",
+  "Not responding",
+  "No suitable property",
+  "Changed plans",
+  "Duplicate lead",
+] as const;
 
 export const TASK_STATUS_META: MetaMap<TaskStatus> = {
   TODO: { label: "To do", tone: "slate" },

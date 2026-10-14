@@ -8,7 +8,10 @@ Two portals, one database:
 | [`frontend/`](frontend) | **3001** | eliterealestate.qa | **Website** (English/Arabic) and the **client dashboard** (`/en/dashboard`: bookings, saved homes, compare, homes for you, preferences, journey). Talks to the agent app over HTTP only — no database access. See [`frontend/README.md`](frontend/README.md). |
 
 Every listing on the website comes from the agent app: agents post, edit, sell or unpublish a
-property and the website follows within seconds. Viewings clients book on the website land
+property and the website follows within seconds. Clients reserve homes with a Fawran / bank
+transfer deposit; agents move leads through enforced stages (viewing form, booking form +
+payment proof, reasons for Lost), generate contracts from admin-edited templates, and closing a
+deal turns the lead into a client. Password resets use a 6-digit e-mail code. Viewings clients book on the website land
 in the agent's calendar with a confirm task; saved homes and preferences show on the
 client's page in the agent app.
 

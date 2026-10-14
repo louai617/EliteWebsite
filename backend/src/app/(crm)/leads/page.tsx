@@ -11,6 +11,7 @@ import { LeadBoard } from "@/components/leads/lead-board";
 import { LeadsTable } from "@/components/leads/leads-table";
 import { LeadsToolbar } from "@/components/leads/leads-toolbar";
 import { CreateLeadButton } from "@/components/leads/create-lead-button";
+import { BulkReassignButton } from "@/components/leads/bulk-reassign";
 
 export const metadata: Metadata = { title: "Leads" };
 
@@ -37,7 +38,12 @@ export default async function LeadsPage({ searchParams }: PageProps<"/leads">) {
     <PageHeader
       title="Leads"
       description={`${total} ${total === 1 ? "lead" : "leads"}${viewer.isManager ? " across the team" : " assigned to you"}`}
-      actions={<CreateLeadButton agents={agents} viewer={viewer} openFromUrl />}
+      actions={
+        <>
+          {viewer.isManager && <BulkReassignButton agents={agents} />}
+          <CreateLeadButton agents={agents} viewer={viewer} openFromUrl />
+        </>
+      }
     />
   );
 

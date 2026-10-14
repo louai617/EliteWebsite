@@ -4,14 +4,14 @@ import { notFound } from "next/navigation";
 import { Mail, MessageCircle, Phone } from "lucide-react";
 import { requireUser } from "@/lib/auth/session";
 import { toViewer } from "@/lib/viewer";
-import { CUSTOMER_TYPE_META, FURNISHING_META, LEAD_SOURCE_META, LEAD_STATUS_META, PRIORITY_META, PURPOSE_META } from "@/lib/constants";
+import { CUSTOMER_TYPE_META, FURNISHING_META, LEAD_DOCUMENT_KINDS, LEAD_SOURCE_META, LEAD_STATUS_META, PRIORITY_META, PURPOSE_META } from "@/lib/constants";
 import { formatDate, formatMoney } from "@/lib/format";
 import { RelativeTime } from "@/components/shared/relative-time";
-import { getLead } from "@/services/leads";
+import { getLead, missingWonDocuments, viewingGate } from "@/services/leads";
+import { listDocuments } from "@/services/documents";
 import { listNotes } from "@/services/notes";
 import { timeline } from "@/services/activity";
 import { listAssignableUsers } from "@/services/users";
-import { getSettings } from "@/services/settings";
 import { listTasks } from "@/services/tasks";
 import { addLeadInterestAction, removeLeadInterestAction } from "@/actions/leads";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -27,6 +27,8 @@ import { DealMiniList, ViewingMiniList } from "@/components/shared/related-lists
 import { LeadHeaderActions } from "@/components/leads/lead-header-actions";
 import { TaskList } from "@/components/tasks/task-list";
 import { LogActivityButton } from "@/components/activities/log-activity";
+import { DocumentsPanel } from "@/components/documents/documents-panel";
+import { StageRequirements, type StageInfo } from "@/components/leads/lead-stage";
 
 export const metadata: Metadata = { title: "Lead" };
 
@@ -40,13 +42,22 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
   const lead = await getLead(user, id);
   if (!lead) notFound();
   const viewer = toViewer(user);
-  const [notes, activity, agents, settings, tasks] = await Promise.all([
+  const [notes, activity, agents, tasks, documents, gate, missing] = await Promise.all([
     listNotes("lead", id),
     timeline("leadId", id, 40),
     listAssignableUsers(),
-    getSettings(),
     listTasks(user, { page: 1, pageSize: 50, sort: "dueDate", dir: "asc" }, { leadId: id }),
+    listDocuments(user, "lead", id),
+    viewingGate(lead),
+    missingWonDocuments(lead),
   ]);
+  const stage: StageInfo = {
+    lead: { id: lead.id, fullName: lead.fullName, status: lead.status, lostReason: lead.lostReason },
+    gate,
+    missingWonDocuments: missing,
+    properties: lead.interests.map((i) => ({ id: i.property.id, reference: i.property.reference, title: i.property.title, price: i.property.price, purpose: i.property.purpose })),
+    isManager: viewer.isManager,
+  };
 
   const firstProperty = lead.interests[0]?.property;
   const propertyOption = firstProperty ? { id: firstProperty.id, label: `${firstProperty.reference} · ${firstProperty.title}` } : null;
@@ -72,9 +83,10 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
             <span className="flex items-center gap-1.5">
               · <AgentCell agent={lead.agent} />
             </span>
+            {lead.autoReassignedAt && <span className="text-amber-700">Moved to {lead.agent?.name ?? "the admin"} automatically (no progress in 24 h)</span>}
           </span>
         }
-        actions={<LeadHeaderActions lead={lead} clientId={lead.clientId} agents={agents} viewer={viewer} />}
+        actions={<LeadHeaderActions lead={lead} clientId={lead.clientId} agents={agents} viewer={viewer} stage={stage} />}
       >
         <div className="flex flex-wrap gap-2">
           <RecordActions
@@ -82,17 +94,6 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
             viewer={viewer}
             viewing={{ leadId: lead.id, leadOption, clientId: lead.clientId ?? undefined, clientOption, propertyId: firstProperty?.id, propertyOption, agentId: lead.agentId }}
             task={{ leadId: lead.id, leadOption }}
-            deal={{
-              leadId: lead.id,
-              leadOption,
-              clientId: lead.clientId ?? undefined,
-              clientOption,
-              propertyId: firstProperty?.id,
-              propertyOption,
-              type: firstProperty?.purpose === "SALE" ? "SALE" : "RENTAL",
-              amount: firstProperty ? (firstProperty.purpose === "SALE" ? firstProperty.price : firstProperty.price * 12) : undefined,
-              defaults: settings,
-            }}
           />
           <LogActivityButton
             viewer={viewer}
@@ -142,6 +143,25 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
                   ]}
                 />
                 {lead.notes && <p className="mt-4 rounded-md bg-muted/60 p-3 text-sm whitespace-pre-wrap">{lead.notes}</p>}
+              </CardContent>
+            </Card>
+          </div>
+
+          <div className="grid gap-5 lg:grid-cols-2">
+            <Card>
+              <CardHeader>
+                <CardTitle>Stage paperwork</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <StageRequirements info={stage} />
+              </CardContent>
+            </Card>
+            <Card>
+              <CardHeader>
+                <CardTitle>Documents</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <DocumentsPanel target="lead" targetId={lead.id} documents={documents} kinds={LEAD_DOCUMENT_KINDS} canDelete={viewer.isManager} emptyText="Attach the viewing form, booking form and payment proof here." />
               </CardContent>
             </Card>
           </div>
