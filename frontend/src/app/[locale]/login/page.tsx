@@ -1,27 +1,28 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
-import { useLocale, useTranslations } from 'next-intl';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useLocale } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Mail, Lock, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
-import { useAuth } from '@/lib/AuthContext';
+import { crmHome, useAuth } from '@/lib/AuthContext';
+import { errorMessage } from '@/lib/api';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  password: z.string().min(1, 'Please enter your password').max(128),
 });
 
 type LoginFormValues = z.infer<typeof loginSchema>;
 
-export default function LoginPage() {
-  const t = useTranslations('common');
+function LoginForm() {
   const locale = useLocale();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { login } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -38,11 +39,16 @@ export default function LoginPage() {
     setIsLoading(true);
     setError(null);
     try {
-      await login(data);
-      // Redirect based on role or to home
-      router.push(`/${locale}`);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Invalid email or password. Please try again.');
+      const user = await login(data);
+      if (user.app === 'crm') {
+        // Staff accounts work in the CRM (backend app); the session cookie is shared.
+        window.location.assign(crmHome());
+        return;
+      }
+      const next = searchParams.get('next');
+      router.push(next && next.startsWith(`/${locale}/`) && !next.startsWith('//') ? next : `/${locale}/dashboard`);
+    } catch (err) {
+      setError(errorMessage(err, 'Invalid email or password. Please try again.'));
     } finally {
       setIsLoading(false);
     }
@@ -130,7 +136,7 @@ export default function LoginPage() {
 
           <div className="mt-10 pt-8 border-t border-gray-100 text-center">
             <p className="text-gray-500 text-sm">
-              Don't have an account?{' '}
+              Don&apos;t have an account?{' '}
               <Link href={`/${locale}/register`} className="font-bold text-[#b98f42] hover:underline">
                 Create an account
               </Link>
@@ -139,5 +145,14 @@ export default function LoginPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function LoginPage() {
+  // useSearchParams (?next=) needs a Suspense boundary for static rendering.
+  return (
+    <Suspense>
+      <LoginForm />
+    </Suspense>
   );
 }

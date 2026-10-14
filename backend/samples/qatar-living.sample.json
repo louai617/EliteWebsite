@@ -1,0 +1,54 @@
+[
+  {
+    "id": "QL-SAMPLE-5001",
+    "title": "Spacious 4BR standalone villa, Al Waab",
+    "description": "Standalone villa with private garden and maid's room. Direct from owner.",
+    "category": "Residential",
+    "type": "Villa",
+    "purpose": "For Rent",
+    "price": "18000",
+    "price_period": "monthly",
+    "currency": "QAR",
+    "bedrooms": 4,
+    "bathrooms": 5,
+    "size": 450,
+    "location": "Al Waab",
+    "city": "Doha",
+    "furnishing": "Unfurnished",
+    "amenities": ["Garden", "Maid room", "Covered parking"],
+    "images": ["https://images.example.com/ql/5001-1.jpg"],
+    "seller_type": "owner",
+    "contact": { "name": "Hamad Al-Kuwari", "phone": "+974 3300 1122", "email": "hamad.owner@example.com" },
+    "url": "https://www.qatarliving.com/properties/sample-5001",
+    "created_at": "2026-09-25T12:00:00Z"
+  },
+  {
+    "id": "QL-SAMPLE-5002",
+    "title": "Retail shop on Salwa Road",
+    "category": "Commercial",
+    "type": "Shop",
+    "purpose": "rent",
+    "price": "240000",
+    "price_period": "yearly",
+    "size": 120,
+    "location": "Salwa Road",
+    "seller_type": "agency",
+    "agent": { "name": "Aisha Rahman", "email": "aisha@elite.qa", "phone": "+974 5500 3002" },
+    "url": "https://www.qatarliving.com/properties/sample-5002"
+  },
+  {
+    "id": "QL-SAMPLE-5003",
+    "title": "Missing price (fails validation on purpose)",
+    "type": "Apartment",
+    "purpose": "sale",
+    "location": "Lusail"
+  },
+  {
+    "id": "QL-SAMPLE-5001",
+    "title": "Duplicate of the first record (skipped)",
+    "type": "Villa",
+    "purpose": "rent",
+    "price": 1,
+    "location": "Al Waab"
+  }
+]

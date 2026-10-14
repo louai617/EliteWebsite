@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { Cairo, Work_Sans } from "next/font/google";
 import "@/app/globals.css";
 import { NextIntlClientProvider, hasLocale } from 'next-intl';
@@ -9,6 +8,7 @@ import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import ChatbotWidget from '@/components/chatbot/ChatbotWidget';
 import { AuthProvider } from '@/lib/AuthContext';
+import { SavedHomesProvider } from '@/lib/SavedHomesContext';
 
 const workSans = Work_Sans({ 
   subsets: ["latin"],
@@ -80,6 +80,7 @@ export default async function RootLayout({
       <body className={`${workSans.variable} ${cairo.variable} font-sans`}>
         <NextIntlClientProvider messages={messages} locale={locale}>
           <AuthProvider>
+            <SavedHomesProvider>
             <div className="flex flex-col min-h-screen">
               <Navbar />
               <div className="flex-grow">
@@ -88,6 +89,7 @@ export default async function RootLayout({
               <Footer />
               <ChatbotWidget />
             </div>
+            </SavedHomesProvider>
           </AuthProvider>
         </NextIntlClientProvider>
       </body>

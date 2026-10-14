@@ -1,29 +1,37 @@
 'use client';
 
-import React, { useState } from 'react';
+import React, { Suspense, useState } from 'react';
 import Link from 'next/link';
 import Image from 'next/image';
-import { useRouter } from 'next/navigation';
-import { useLocale, useTranslations } from 'next-intl';
+import { useRouter, useSearchParams } from 'next/navigation';
+import { useLocale } from 'next-intl';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import * as z from 'zod';
 import { Mail, Lock, User, Phone, ArrowRight, AlertCircle, Loader2 } from 'lucide-react';
 import { useAuth } from '@/lib/AuthContext';
+import { ApiError, errorMessage } from '@/lib/api';
 
 const registerSchema = z.object({
-  full_name: z.string().min(3, 'Full name is required'),
-  email: z.string().email('Please enter a valid email address'),
-  phone: z.string().min(8, 'Phone number is required'),
-  password: z.string().min(6, 'Password must be at least 6 characters'),
+  // Mirrors the backend rules (backend/src/schemas/portal.ts); the server validates again.
+  name: z.string().trim().min(2, 'Full name is required').max(120),
+  email: z.string().trim().email('Please enter a valid email address'),
+  phone: z.string().trim().regex(/^\+?[0-9][0-9 ()-]{6,19}$/, 'Enter a valid phone number, e.g. +974 5512 3456'),
+  password: z
+    .string()
+    .min(10, 'Use at least 10 characters')
+    .max(128, 'Keep it under 128 characters')
+    .regex(/[a-z]/, 'Add a lowercase letter')
+    .regex(/[A-Z]/, 'Add an uppercase letter')
+    .regex(/[0-9]/, 'Add a number'),
 });
 
 type RegisterFormValues = z.infer<typeof registerSchema>;
 
-export default function RegisterPage() {
-  const t = useTranslations('common');
+function RegisterForm() {
   const locale = useLocale();
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { register: signup } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
@@ -31,6 +39,7 @@ export default function RegisterPage() {
   const {
     register,
     handleSubmit,
+    setError: setFieldError,
     formState: { errors },
   } = useForm<RegisterFormValues>({
     resolver: zodResolver(registerSchema),
@@ -41,9 +50,15 @@ export default function RegisterPage() {
     setError(null);
     try {
       await signup(data);
-      router.push(`/${locale}`);
-    } catch (err: any) {
-      setError(err.response?.data?.message || 'Something went wrong. Please try again.');
+      const next = searchParams.get('next');
+      router.push(next && next.startsWith(`/${locale}/`) && !next.startsWith('//') ? next : `/${locale}/dashboard`);
+    } catch (err) {
+      if (err instanceof ApiError && err.fields) {
+        for (const [field, messages] of Object.entries(err.fields)) {
+          if (field in registerSchema.shape) setFieldError(field as keyof RegisterFormValues, { message: messages[0] });
+        }
+      }
+      setError(errorMessage(err));
     } finally {
       setIsLoading(false);
     }
@@ -83,13 +98,13 @@ export default function RegisterPage() {
                   <User className="w-5 h-5" />
                 </div>
                 <input
-                  {...register('full_name')}
+                  {...register('name')}
                   type="text"
-                  className={`w-full pl-12 pr-4 py-3 bg-gray-50 border ${errors.full_name ? 'border-red-500' : 'border-gray-200'} rounded-xl focus:ring-2 focus:ring-[#b98f42]/20 focus:border-[#b98f42] outline-none transition-all`}
+                  className={`w-full pl-12 pr-4 py-3 bg-gray-50 border ${errors.name ? 'border-red-500' : 'border-gray-200'} rounded-xl focus:ring-2 focus:ring-[#b98f42]/20 focus:border-[#b98f42] outline-none transition-all`}
                   placeholder="John Doe"
                 />
               </div>
-              {errors.full_name && <p className="text-red-500 text-xs mt-1 font-medium">{errors.full_name.message}</p>}
+              {errors.name && <p className="text-red-500 text-xs mt-1 font-medium">{errors.name.message}</p>}
             </div>
 
             <div>
@@ -137,7 +152,11 @@ export default function RegisterPage() {
                   placeholder="••••••••"
                 />
               </div>
-              {errors.password && <p className="text-red-500 text-xs mt-1 font-medium">{errors.password.message}</p>}
+              {errors.password ? (
+                <p className="text-red-500 text-xs mt-1 font-medium">{errors.password.message}</p>
+              ) : (
+                <p className="text-gray-400 text-xs mt-1">At least 10 characters, with upper- and lower-case letters and a number.</p>
+              )}
             </div>
 
             <button
@@ -167,5 +186,14 @@ export default function RegisterPage() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function RegisterPage() {
+  // useSearchParams (?next=) needs a Suspense boundary for static rendering.
+  return (
+    <Suspense>
+      <RegisterForm />
+    </Suspense>
   );
 }

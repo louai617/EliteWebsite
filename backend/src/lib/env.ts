@@ -1,0 +1,61 @@
+import "server-only";
+
+/**
+ * Server-side configuration read from the environment. Nothing in here is ever sent to the
+ * browser. See .env.example for documentation of every variable.
+ */
+
+const list = (value: string | undefined) =>
+  (value ?? "")
+    .split(",")
+    .map((v) => v.trim().replace(/\/+$/, ""))
+    .filter(Boolean);
+
+/** Public URL of the client app (website + client portal), e.g. http://localhost:3001. */
+export const CLIENT_APP_URL = (process.env.CLIENT_APP_URL ?? "http://localhost:3001").replace(/\/+$/, "");
+
+/** Where client-portal users are sent if they open the staff CRM. */
+export const CLIENT_PORTAL_URL = process.env.CLIENT_PORTAL_URL ?? `${CLIENT_APP_URL}/en/dashboard`;
+
+/**
+ * Browser origins allowed to call the API with credentials (CORS). Defaults to the client app.
+ * Comma-separated, e.g. "https://elite.qa,https://www.elite.qa".
+ */
+export function corsOrigins(): string[] {
+  const configured = list(process.env.CORS_ORIGINS);
+  return configured.length ? configured : [CLIENT_APP_URL];
+}
+
+/** Shared secret for the external cron trigger (POST /api/cron/daily-rollover). */
+export const CRON_SECRET = process.env.CRON_SECRET ?? "";
+
+/** Set to "false" to disable the in-process scheduler (e.g. when an external cron is used). */
+export const SCHEDULER_ENABLED = process.env.SCHEDULER_ENABLED !== "false";
+
+/**
+ * Public URL of this app (the agent CRM + API), e.g. https://app.eliterealestate.qa.
+ * Used to build absolute photo URLs for the website. Falls back to the request's origin.
+ */
+export const APP_URL = (process.env.APP_URL ?? "").replace(/\/+$/, "");
+
+export function publicOrigin(request: Request) {
+  return APP_URL || new URL(request.url).origin;
+}
+
+/**
+ * Outgoing e-mail (password codes, booking and reservation e-mails). With no SMTP_HOST, e-mails
+ * are written to storage/outbox in development (and not sent); in production they fail loudly
+ * in the log and the team gets a task instead.
+ */
+export const MAIL = {
+  host: process.env.SMTP_HOST ?? "",
+  port: Number(process.env.SMTP_PORT ?? 587),
+  /** true for port 465 (implicit TLS); STARTTLS is used otherwise. */
+  secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === "true" : Number(process.env.SMTP_PORT ?? 587) === 465,
+  user: process.env.SMTP_USER ?? "",
+  pass: process.env.SMTP_PASS ?? "",
+  from: process.env.MAIL_FROM ?? "ELITE Real Estate <no-reply@eliterealestate.qa>",
+  replyTo: process.env.MAIL_REPLY_TO ?? "",
+};
+
+export const mailConfigured = () => Boolean(MAIL.host);

@@ -2,18 +2,15 @@
 
 import React, { useState, useRef, useEffect } from 'react';
 import { 
-  MessageSquare, 
   X, 
   Send, 
   Bot, 
   User, 
   Minimize2,
-  Phone,
   MessageCircle
 } from 'lucide-react';
 import { useLocale } from 'next-intl';
-import axios from 'axios';
-import { v4 as uuidv4 } from 'uuid';
+import { api, errorMessage } from '@/lib/api';
 
 interface Message {
   role: 'user' | 'assistant';
@@ -27,27 +24,24 @@ const ChatbotWidget = () => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
-  const [sessionId, setSessionId] = useState('');
+  /** Lead-capture flow: what they need → name + phone → lead created in the CRM. */
+  const [stage, setStage] = useState<'need' | 'contact' | 'done'>('need');
+  const [need, setNeed] = useState<string[]>([]);
   
   const locale = useLocale();
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    // Generate or get session ID
-    let id = localStorage.getItem('elite_chat_session');
-    if (!id) {
-      id = uuidv4();
-      localStorage.setItem('elite_chat_session', id);
-    }
-    setSessionId(id);
+  const ar = locale === 'ar';
 
-    // Initial welcome message
-    const welcomeMsg = locale === 'ar' 
-      ? 'مرحباً! أنا ELITE، مساعدك العقاري الذكي. كيف يمكنني مساعدتك اليوم؟'
-      : 'Hello! I am ELITE, your AI real estate assistant. How can I help you today?';
-    
-    setMessages([{ role: 'assistant', content: welcomeMsg, timestamp: new Date() }]);
-  }, [locale]);
+  const [openedAt] = useState(() => new Date());
+  const welcome: Message = {
+    role: 'assistant',
+    content: ar
+      ? 'مرحباً! أنا مساعد ELITE. أخبرنا عن العقار الذي تبحث عنه وسيتواصل معك أحد وكلائنا.'
+      : "Hello! I'm the ELITE assistant. Tell us what you're looking for and one of our agents will get back to you.",
+    timestamp: openedAt,
+  };
+  const conversation = [welcome, ...messages];
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -55,29 +49,41 @@ const ChatbotWidget = () => {
     }
   }, [messages]);
 
+  const reply = (content: string) => setMessages((prev) => [...prev, { role: 'assistant', content, timestamp: new Date() }]);
+
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
-    const userMsg = input.trim();
+    const userMsg = input.trim().slice(0, 1000);
     setInput('');
-    setMessages(prev => [...prev, { role: 'user', content: userMsg, timestamp: new Date() }]);
+    setMessages((prev) => [...prev, { role: 'user', content: userMsg, timestamp: new Date() }]);
+
+    if (stage === 'need') {
+      setNeed([userMsg]);
+      setStage('contact');
+      reply(ar ? 'شكراً! ما اسمك ورقم هاتفك؟ (مثال: سارة، ‎+974 5555 1234)' : 'Thanks! What is your name and mobile number? (e.g. Sara, +974 5555 1234)');
+      return;
+    }
+    if (stage === 'done') {
+      reply(ar ? 'تم إرسال طلبك وسيتواصل معك أحد الوكلاء قريباً. للمساعدة العاجلة استخدم واتساب.' : 'Your request is with our team — an agent will contact you shortly. For urgent help, use WhatsApp.');
+      return;
+    }
+
+    const phone = userMsg.match(/\+?\d[\d ()-]{6,19}\d/)?.[0]?.trim();
+    const name = userMsg.replace(phone ?? '', '').replace(/[,;:|-]+/g, ' ').replace(/\s+/g, ' ').trim();
+    if (!phone || name.length < 2) {
+      reply(ar ? 'يرجى كتابة اسمك ورقم هاتفك معاً، مثال: سارة، ‎+974 5555 1234' : 'Please send both your name and phone number, e.g. Sara, +974 5555 1234');
+      return;
+    }
+
     setIsLoading(true);
-
     try {
-      const response = await axios.post(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000'}/api/chatbot/message`, {
-        sessionId,
-        message: userMsg,
-        locale
-      });
-
-      setMessages(prev => [...prev, { 
-        role: 'assistant', 
-        content: response.data.response, 
-        timestamp: new Date() 
-      }]);
-    } catch (error) {
-      console.error('Chat error:', error);
+      await api.post('/public/leads', { fullName: name.slice(0, 120), phone, message: `Website chat:\n${need.join('\n')}`.slice(0, 2000) });
+      setStage('done');
+      reply(ar ? `شكراً ${name}! تم تسجيل طلبك وسيتصل بك أحد وكلائنا قريباً.` : `Thank you, ${name}! Your request has been registered and one of our agents will call you shortly.`);
+    } catch (err) {
+      reply(errorMessage(err, ar ? 'تعذر إرسال طلبك. حاول مرة أخرى أو تواصل معنا عبر واتساب.' : "We couldn't send your request. Please try again or reach us on WhatsApp."));
     } finally {
       setIsLoading(false);
     }
@@ -103,7 +109,7 @@ const ChatbotWidget = () => {
         >
           <Bot className="w-8 h-8" />
           <span className="absolute right-full mr-4 bg-black text-white px-3 py-1 rounded text-xs whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity">
-            Chat with ELITE AI
+            Chat with ELITE
           </span>
         </button>
       </div>
@@ -119,7 +125,7 @@ const ChatbotWidget = () => {
             <Bot className="w-6 h-6" />
           </div>
           <div>
-            <h3 className="font-bold text-sm">ELITE AI Assistant</h3>
+            <h3 className="font-bold text-sm">ELITE Assistant</h3>
             <div className="flex items-center gap-1.5">
               <span className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></span>
               <span className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Online</span>
@@ -143,7 +149,7 @@ const ChatbotWidget = () => {
             ref={scrollRef}
             className="flex-grow p-4 overflow-y-auto bg-gray-50 flex flex-col gap-4"
           >
-            {messages.map((msg, index) => (
+            {conversation.map((msg, index) => (
               <div 
                 key={index}
                 className={`flex gap-3 max-w-[85%] ${msg.role === 'user' ? 'ml-auto flex-row-reverse' : 'mr-auto'}`}
@@ -196,7 +202,7 @@ const ChatbotWidget = () => {
 
           {/* Footer Info */}
           <div className="px-4 py-2 bg-gray-50 text-[10px] text-center text-gray-400 font-bold uppercase tracking-widest border-t border-gray-100">
-            Powered by ELITE Real Estate AI
+            Your details go straight to an ELITE agent
           </div>
         </>
       )}
