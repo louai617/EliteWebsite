@@ -13,6 +13,7 @@ import { company } from '@/data/company';
 
 import PropertyGallery from '@/components/properties/detail/PropertyGallery';
 import PropertyNav from '@/components/properties/detail/PropertyNav';
+import PropertyMedia from '@/components/properties/detail/PropertyMedia';
 import ExpandableText from '@/components/properties/detail/ExpandableText';
 import AmenitiesGrid from '@/components/properties/detail/AmenitiesGrid';
 import PriceTrendsChart from '@/components/properties/detail/PriceTrendsChart';
@@ -114,6 +115,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
 
   const t = await getTranslations({ locale, namespace: 'property' });
   const tCommon = await getTranslations({ locale, namespace: 'common' });
+  const tMedia = await getTranslations({ locale, namespace: 'media' });
   const isRtl = locale === 'ar';
 
   const title = isRtl ? property.title_ar : property.title_en;
@@ -152,9 +154,12 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
   // Market data is computed from real CRM inventory; sections without data are hidden.
   const showTrends = Boolean(market);
   const showAmenities = property.amenities.length > 0;
+  const media = property.media;
+  const showMedia = Boolean(media && (media.videos.length || media.tours.length || media.floor_plans.length || media.brochure));
 
   const sections = [
     { id: 'overview', labelKey: 'nav_overview' },
+    ...(showMedia ? [{ id: 'media', labelKey: 'nav_media' }] : []),
     { id: 'details', labelKey: 'nav_details' },
     ...(showAmenities ? [{ id: 'amenities', labelKey: 'nav_amenities' }] : []),
     ...(showTrends ? [{ id: 'trends', labelKey: 'nav_trends' }] : []),
@@ -211,7 +216,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
           <span className="truncate font-medium text-gray-600">{area}</span>
         </nav>
 
-        <PropertyGallery images={property.images} title={title} />
+        <PropertyGallery images={property.images} title={title} hasVideo={Boolean(media?.videos.length)} hasTour={Boolean(media?.tours.length)} />
 
         {/* Headline block */}
         <header className="mt-8 flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">
@@ -322,6 +327,12 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
               )}
               {description && <ExpandableText text={description} />}
             </Section>
+
+            {showMedia && media && (
+              <Section id="media" title={tMedia('title')}>
+                <PropertyMedia media={media} />
+              </Section>
+            )}
 
             <Section id="details" title={t('property_details')}>
               <dl className="grid gap-x-10 sm:grid-cols-2">

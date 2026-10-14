@@ -1,6 +1,7 @@
 import "server-only";
 import { randomUUID } from "node:crypto";
-import { mkdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { createReadStream, createWriteStream } from "node:fs";
+import { mkdir, readFile, rename, stat, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { invalid } from "@/lib/errors";
 
@@ -131,4 +132,88 @@ export function safeFileName(name: string, mimeType: string) {
   const ext = DOCUMENT_TYPES[mimeType] ?? "bin";
   const base = name.replace(/\.[^.]*$/, "").normalize("NFKD").replace(/[^a-zA-Z0-9._ -]/g, "").trim().replace(/\s+/g, "-").slice(0, 80) || "document";
   return `${base}.${ext}`;
+}
+
+// ───────────────────────────── Listing media (videos, floor plans, brochures) ─────────────────────────────
+
+/**
+ * Uploaded listing media lives in ./storage/media/<propertyId>/ and is streamed by
+ * /api/media/:id (with HTTP range support for video seeking). Uploads are written to disk
+ * chunk by chunk, so a 200 MB video never sits in memory.
+ */
+const MEDIA_ROOT = path.join(process.cwd(), "storage", "media");
+
+export type UploadableMediaKind = "VIDEO" | "FLOOR_PLAN" | "BROCHURE";
+
+export const MEDIA_RULES: Record<UploadableMediaKind, { maxBytes: number; types: Record<string, string>; label: string }> = {
+  VIDEO: { maxBytes: 200 * 1024 * 1024, types: { "video/mp4": "mp4", "video/quicktime": "mov", "video/webm": "webm" }, label: "MP4, MOV or WebM, up to 200 MB" },
+  FLOOR_PLAN: { maxBytes: 15 * 1024 * 1024, types: { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp", "application/pdf": "pdf" }, label: "JPG, PNG, WebP or PDF, up to 15 MB" },
+  BROCHURE: { maxBytes: 30 * 1024 * 1024, types: { "application/pdf": "pdf" }, label: "PDF, up to 30 MB" },
+};
+
+function sniffMedia(head: Buffer): string | null {
+  if (head.subarray(0, 5).toString("ascii") === "%PDF-") return "application/pdf";
+  if (head.subarray(4, 8).toString("ascii") === "ftyp") return head.subarray(8, 12).toString("ascii") === "qt  " ? "video/quicktime" : "video/mp4";
+  if (head.subarray(0, 4).equals(Buffer.from([0x1a, 0x45, 0xdf, 0xa3]))) return "video/webm";
+  return sniff(head);
+}
+
+/** Streams an upload to disk; rejects (and removes the file) when too big or the wrong type. */
+export async function saveMediaStream(propertyId: string, kind: UploadableMediaKind, body: ReadableStream<Uint8Array>) {
+  const rules = MEDIA_RULES[kind];
+  const folder = propertyId.replace(/[^a-zA-Z0-9_-]/g, "");
+  if (!folder) throw invalid("Invalid property.");
+  const dir = path.join(MEDIA_ROOT, folder);
+  await mkdir(/*turbopackIgnore: true*/ dir, { recursive: true });
+  const tmpName = `${randomUUID()}.part`;
+  const tmpPath = path.join(dir, tmpName);
+  const out = createWriteStream(/*turbopackIgnore: true*/ tmpPath);
+  let size = 0;
+  let head = Buffer.alloc(0);
+  const reader = body.getReader();
+  try {
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      size += value.byteLength;
+      if (size > rules.maxBytes) throw invalid(`The file is too large (${rules.label}).`, { file: ["Too large"] });
+      if (head.length < 16) head = Buffer.concat([head, Buffer.from(value.subarray(0, 16 - head.length))]);
+      if (!out.write(value)) await new Promise<void>((resolve) => out.once("drain", () => resolve()));
+    }
+    await new Promise<void>((resolve, reject) => out.end((err?: Error | null) => (err ? reject(err) : resolve())));
+    if (size === 0) throw invalid("The file is empty.", { file: ["Empty file"] });
+    const mimeType = sniffMedia(head);
+    const ext = mimeType ? rules.types[mimeType] : undefined;
+    if (!mimeType || !ext) throw invalid(`Unsupported file — use ${rules.label}.`, { file: ["Wrong type"] });
+    const storageKey = `${folder}/${tmpName.replace(/\.part$/, `.${ext}`)}`;
+    await rename(/*turbopackIgnore: true*/ tmpPath, path.join(MEDIA_ROOT, storageKey));
+    return { storageKey, mimeType, size };
+  } catch (error) {
+    reader.cancel().catch(() => undefined);
+    out.destroy();
+    await unlink(/*turbopackIgnore: true*/ tmpPath).catch(() => undefined);
+    throw error;
+  }
+}
+
+function resolveMedia(storageKey: string) {
+  const full = path.resolve(MEDIA_ROOT, storageKey);
+  return full.startsWith(MEDIA_ROOT + path.sep) ? full : null;
+}
+
+/** Size + a stream for [start, end] (inclusive) of an uploaded media file. */
+export async function openMediaFile(storageKey: string) {
+  const full = resolveMedia(storageKey);
+  if (!full) return null;
+  try {
+    const { size } = await stat(/*turbopackIgnore: true*/ full);
+    return { size, stream: (start: number, end: number) => createReadStream(/*turbopackIgnore: true*/ full, { start, end }) };
+  } catch {
+    return null;
+  }
+}
+
+export async function deleteMediaFile(storageKey: string) {
+  const full = resolveMedia(storageKey);
+  if (full) await unlink(/*turbopackIgnore: true*/ full).catch(() => undefined);
 }

@@ -218,7 +218,8 @@
     "studio": "Studio",
     "sales_team": "Sales team",
     "response_unknown": "Usually replies within the day",
-    "no_photos": "Photos coming soon"
+    "no_photos": "Photos coming soon",
+    "nav_media": "Media"
   },
   "about": {
     "eyebrow": "Company Profile",
@@ -334,5 +335,21 @@
     "sign_in_title": "Sign in to reserve this home",
     "sign_in_body": "Create a free account to reserve homes and track your payment.",
     "staff_note": "You're signed in as staff. Clients reserve homes from their own account."
+  },
+  "media": {
+    "title": "Video, 360° tour & floor plans",
+    "nav": "Media",
+    "video": "Video",
+    "tour": "360° tour",
+    "floor_plans": "Floor plans",
+    "brochure": "Download brochure",
+    "open_link": "Open in a new tab",
+    "watch_video": "Watch video",
+    "view_tour": "360° tour",
+    "floor_plan": "Floor plan",
+    "open_pdf": "Open PDF",
+    "badge_video": "Video",
+    "badge_tour": "360°",
+    "unsupported": "Your browser can't play this video."
   }
 }

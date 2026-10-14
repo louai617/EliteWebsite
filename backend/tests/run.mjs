@@ -15,3 +15,4 @@ run("node --conditions=react-server --import tsx tests/services.test.ts");
 run("node --conditions=react-server --import tsx tests/operations.test.ts");
 run("node --conditions=react-server --import tsx tests/website.test.ts");
 run("node --conditions=react-server --import tsx tests/workflow.test.ts");
+run("node --conditions=react-server --import tsx tests/media.test.ts");

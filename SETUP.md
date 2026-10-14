@@ -125,6 +125,10 @@ CRM is sent to their portal. These are development accounts — change them befo
   section (also: Exclusive, Verified, Arabic title, completion, payment plan, nearby places).
   Save, then open http://localhost:3001/en/properties — it is there.
 - Change its price, untick **Show on website**, or mark it *Sold*: the website follows.
+- **Videos, tours & floor plans** card on a property: paste a YouTube / Vimeo link or upload a
+  video (MP4, MOV, WebM up to 200 MB), add a 360° tour (Matterport, Kuula or any link), upload
+  floor plans (image or PDF) and a PDF brochure. The website shows a *Media* section with
+  players, "Watch video" / "360° tour" buttons on the gallery and badges on listing cards.
 - The property page in the agent app shows *Live on website* with a link to the public page;
   the properties table has a *Website* column and filter.
 
@@ -267,6 +271,7 @@ website's only secret, `REVALIDATE_SECRET`, is server-only and never reaches the
 | No password-reset e-mail arrives | Set `SMTP_*` in `backend/.env` (see §8). Locally, open the newest file in `backend/storage/outbox/`. Settings → E-mail shows each attempt. |
 | "Attach the viewing form first" | Upload the signed viewing form on the lead (Documents or Stage paperwork), or request a pass. |
 | "Reserve this home" says reservations aren't open | Fill in the IBAN or Fawran alias under Settings → Reservations & payments. |
+| A big video upload fails | Videos are up to 200 MB (MP4, MOV, WebM). For longer films upload to YouTube or Vimeo and paste the link. Behind a reverse proxy (nginx), allow large bodies on `/api/media-upload/`, e.g. `client_max_body_size 210m;`. |
 | Property photos don't show | The demo photos come from images.unsplash.com and need an internet connection. |
 | Website shows "No properties" | Start the agent app first, check that properties have **Show on website** on and are *Available*/*Reserved*. |
 | Agent changes take up to a minute to appear | Set the same `WEBSITE_REVALIDATE_SECRET` / `REVALIDATE_SECRET` in both env files (step 4) and restart both apps. |

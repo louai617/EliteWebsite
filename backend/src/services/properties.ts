@@ -14,7 +14,7 @@ import { logActivity } from "./activity";
 import { onPropertyCreated } from "./automation";
 import { assertActiveUser, assertCanAccess } from "./access";
 import { nextReference } from "./references";
-import { deleteUpload } from "./storage";
+import { deleteMediaFile, deleteUpload } from "./storage";
 import { notifyWebsite } from "./website-sync";
 import { recordWorkActivity } from "./work-activities";
 import type { Tx } from "./types";
@@ -313,7 +313,7 @@ export async function deleteProperty(actor: Actor, id: string) {
   if (!can.deleteRecords(actor)) throw forbidden("Only managers can delete properties.");
   const property = await db.property.findUnique({
     where: { id },
-    select: { reference: true, title: true, images: { select: { url: true } }, _count: { select: { deals: true } } },
+    select: { reference: true, title: true, images: { select: { url: true } }, media: { select: { storageKey: true } }, _count: { select: { deals: true } } },
   });
   if (!property) throw notFound("Property");
   if (property._count.deals > 0) {
@@ -327,6 +327,7 @@ export async function deleteProperty(actor: Actor, id: string) {
     });
   });
   await Promise.all(property.images.map((img) => deleteUpload(img.url)));
+  await Promise.all(property.media.map((m) => (m.storageKey ? deleteMediaFile(m.storageKey) : undefined)));
   notifyWebsite();
 }
 
@@ -335,7 +336,7 @@ export async function deleteProperty(actor: Actor, id: string) {
 export async function editableProperty(actor: Actor, propertyId: string) {
   const property = await db.property.findUnique({ where: { id: propertyId }, select: { id: true, agentId: true, reference: true, title: true } });
   if (!property) throw notFound("Property");
-  if (!canEditProperty(actor, property)) throw forbidden("You can only manage photos of your own listings.");
+  if (!canEditProperty(actor, property)) throw forbidden("You can only manage photos and media of your own listings.");
   return property;
 }
 

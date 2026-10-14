@@ -14,6 +14,10 @@ const nextConfig: NextConfig = {
       // Photo (8 MB) and document (10 MB) uploads go through Server Actions.
       bodySizeLimit: "11mb",
     },
+    // The proxy buffers request bodies up to this size (default 10 MB, and larger bodies are
+    // silently cut off). 12 MB covers 10 MB document uploads plus multipart overhead; big
+    // videos use /api/media-upload, which the proxy skips.
+    proxyClientMaxBodySize: "12mb",
   },
   poweredByHeader: false,
   async headers() {

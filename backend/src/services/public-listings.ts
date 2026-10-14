@@ -58,6 +58,7 @@ const cardSelect = {
   websitePublishedAt: true,
   createdAt: true,
   images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 6, select: { url: true } },
+  media: { select: { kind: true } },
 } satisfies Prisma.PropertySelect;
 
 const detailSelect = {
@@ -154,6 +155,8 @@ function toCard(p: CardRow, origin: string) {
     is_featured: p.isFeatured,
     is_verified: p.isVerified,
     is_exclusive: p.isExclusive,
+    has_video: p.media.some((m) => m.kind === "VIDEO"),
+    has_tour: p.media.some((m) => m.kind === "VIRTUAL_TOUR"),
     listed_at: listedAt.toISOString(),
     listed_days_ago: Math.max(0, Math.floor((Date.now() - listedAt.getTime()) / DAY)),
   };
@@ -308,11 +311,17 @@ export async function getPublicListing(ref: string, origin: string) {
   if (!p) return null;
   const nearby = parseList<{ category: string; nameEn: string; nameAr?: string; minutes: number; mode: string }>(p.nearby);
   const plan = parseList<{ key: string; percent: number; timingEn: string; timingAr?: string }>(p.paymentPlan);
-  const [market, agent, similarRows] = await Promise.all([
+  const [market, agent, similarRows, mediaRows] = await Promise.all([
     marketFor(p),
     agentFor(p.agent),
     db.property.findMany({ where: { ...publicWhere, id: { not: p.id }, purpose: p.purpose }, select: { ...cardSelect }, take: 40 }),
+    db.propertyMedia.findMany({ where: { propertyId: p.id }, orderBy: [{ sortOrder: "asc" }, { createdAt: "asc" }], select: { id: true, kind: true, title: true, url: true, provider: true, embedUrl: true, mimeType: true } }),
   ]);
+  // Uploaded files are served by this app; links point to YouTube, Vimeo, Matterport…
+  const mediaUrl = (m: (typeof mediaRows)[number]) => (m.provider === "file" ? `${origin}/api/media/${m.id}` : (m.url ?? ""));
+  const isPdf = (m: (typeof mediaRows)[number]) => m.mimeType === "application/pdf" || /\.pdf($|\?)/i.test(m.url ?? "");
+  const item = (m: (typeof mediaRows)[number]) => ({ id: m.id, title: m.title, provider: m.provider, url: mediaUrl(m), embed_url: m.embedUrl, mime_type: m.mimeType });
+  const brochure = mediaRows.find((m) => m.kind === "BROCHURE");
   const similar = similarRows
     .sort((a, b) => Number(b.area === p.area) - Number(a.area === p.area) || Math.abs(a.price - p.price) - Math.abs(b.price - p.price))
     .slice(0, 3)
@@ -346,6 +355,12 @@ export async function getPublicListing(ref: string, origin: string) {
     payment_plan: plan.map((m) => ({ key: m.key, percent: m.percent, timing_en: m.timingEn, timing_ar: m.timingAr || m.timingEn })),
     seo_title: p.seoTitle,
     seo_description: p.seoDescription,
+    media: {
+      videos: mediaRows.filter((m) => m.kind === "VIDEO").map(item),
+      tours: mediaRows.filter((m) => m.kind === "VIRTUAL_TOUR").map(item),
+      floor_plans: mediaRows.filter((m) => m.kind === "FLOOR_PLAN").map((m) => ({ ...item(m), is_pdf: isPdf(m) })),
+      brochure: brochure ? { title: brochure.title, url: mediaUrl(brochure) } : null,
+    },
     agent,
     market,
     similar,

@@ -4,7 +4,7 @@ import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
 import { useTranslations, useLocale } from 'next-intl';
-import { Bed, Bath, Maximize, MapPin, ShieldCheck, Sparkles, ImageOff } from 'lucide-react';
+import { Bed, Bath, Box, Maximize, MapPin, PlayCircle, ShieldCheck, Sparkles, ImageOff } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
 import type { ListingCard } from '@/lib/listing-types';
@@ -23,6 +23,7 @@ interface PropertyCardProps {
 const PropertyCard: React.FC<PropertyCardProps> = ({ property, footer }) => {
   const t = useTranslations('common');
   const tProperty = useTranslations('property');
+  const tMedia = useTranslations('media');
   const locale = useLocale();
   const isRtl = locale === 'ar';
 
@@ -78,6 +79,22 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ property, footer }) => {
             <span className="inline-flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 text-xs font-bold text-primary shadow-sm backdrop-blur">
               <Sparkles className="h-3.5 w-3.5" aria-hidden="true" />
               {tProperty('exclusive')}
+            </span>
+          )}
+          {(property.has_video || property.has_tour) && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-secondary/85 px-2.5 py-1 text-xs font-bold text-white shadow-sm backdrop-blur">
+              {property.has_video && (
+                <span className="inline-flex items-center gap-1">
+                  <PlayCircle className="h-3.5 w-3.5" aria-hidden="true" />
+                  {tMedia('badge_video')}
+                </span>
+              )}
+              {property.has_tour && (
+                <span className="inline-flex items-center gap-1">
+                  <Box className="h-3.5 w-3.5" aria-hidden="true" />
+                  {tMedia('badge_tour')}
+                </span>
+              )}
             </span>
           )}
         </div>

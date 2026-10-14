@@ -183,6 +183,14 @@ enum ReservationStatus {
   CANCELLED
 }
 
+/// Listing media beyond photos (photos stay in PropertyImage).
+enum MediaKind {
+  VIDEO
+  VIRTUAL_TOUR
+  FLOOR_PLAN
+  BROCHURE
+}
+
 enum PaymentMethod {
   /// QCB instant payments (Fawran) / bank transfer to the company account.
   FAWRAN
@@ -341,6 +349,7 @@ model User {
   passRequests         LeadPassRequest[]   @relation("PassRequester")
   passDecisions        LeadPassRequest[]   @relation("PassDecider")
   editedTemplates      ContractTemplate[]
+  propertyMedia        PropertyMedia[]
   contracts            Contract[]
   reservations         Reservation[]       @relation("ReservationAgent")
   verifiedReservations Reservation[]       @relation("ReservationVerifier")
@@ -492,6 +501,7 @@ model Property {
   notes            Note[]
   activities       Activity[]
   workActivities   AgentActivity[]
+  media            PropertyMedia[]
   reservations     Reservation[]
   externalListings ExternalListing[]
 
@@ -520,6 +530,32 @@ model PropertyImage {
   createdAt  DateTime @default(now())
 
   @@index([propertyId, sortOrder])
+}
+
+/// Videos, 360° tours, floor plans and brochures. Either an external link (YouTube, Vimeo,
+/// Matterport…) or an uploaded file kept in ./storage/media and streamed by /api/media/:id.
+model PropertyMedia {
+  id          String    @id @default(cuid())
+  propertyId  String
+  property    Property  @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  kind        MediaKind
+  title       String?
+  /// External link (https). Empty for uploaded files.
+  url         String?
+  /// youtube | vimeo | matterport | kuula | link | file
+  provider    String
+  /// Embeddable player URL for known providers.
+  embedUrl    String?
+  /// Uploaded file (relative to storage/media).
+  storageKey  String?   @unique
+  mimeType    String?
+  size        Int?
+  sortOrder   Int       @default(0)
+  createdById String?
+  createdBy   User?     @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime  @default(now())
+
+  @@index([propertyId, kind, sortOrder])
 }
 
 /// A lead's or client's interest in a specific property (many-to-many).

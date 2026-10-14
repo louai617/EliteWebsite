@@ -43,5 +43,7 @@ export function proxy(request: NextRequest) {
 
 export const config = {
   // Everything except Next internals and static files.
-  matcher: ["/((?!_next/static|_next/image|favicon.ico|robots.txt|.*\\.(?:svg|png|jpg|jpeg|webp|ico)$).*)"],
+  // The streaming media upload is excluded so its (large) body isn't buffered by the proxy;
+  // the route checks the session and origin itself.
+  matcher: ["/((?!_next/static|_next/image|api/media-upload/|favicon.ico|robots.txt|.*\\.(?:svg|png|jpg|jpeg|webp|ico)$).*)"],
 };

@@ -43,6 +43,8 @@ import { PostingButton } from "@/components/properties/posting-button";
 import { DeleteRecordButton } from "@/components/shared/delete-record-button";
 import { PropertyGallery } from "@/components/properties/property-gallery";
 import { ImageManager } from "@/components/properties/image-manager";
+import { MediaManager } from "@/components/properties/media-manager";
+import { listMedia } from "@/services/property-media";
 import { PropertyStatusMenu } from "@/components/properties/property-status-menu";
 
 export const metadata: Metadata = { title: "Property" };
@@ -67,7 +69,7 @@ export default async function PropertyPage({ params }: PageProps<"/properties/[i
   const websiteLive = property.websitePublished && (property.status === "AVAILABLE" || property.status === "RESERVED");
   const websiteUrl = `${CLIENT_APP_URL}/en/properties/${encodeURIComponent(property.reference)}`;
 
-  const [notes, activity, agents, settings] = await Promise.all([listNotes("property", id), timeline("propertyId", id, 40), listAssignableUsers(), getSettings()]);
+  const [notes, activity, agents, settings, media] = await Promise.all([listNotes("property", id), timeline("propertyId", id, 40), listAssignableUsers(), getSettings(), listMedia(id)]);
   const viewer = toViewer(user);
   const amenities = AMENITIES.filter((a) => property[a.key]);
   const propertyOption = { id: property.id, label: `${property.reference} · ${property.title}`, hint: property.area };
@@ -188,6 +190,16 @@ export default async function PropertyPage({ params }: PageProps<"/properties/[i
             <Spec icon={Layers} label="Floor" value={property.floor ?? null} />
             <Spec icon={CalendarClock} label="Year built" value={property.yearBuilt} />
           </div>
+
+          <Card id="media">
+            <CardHeader>
+              <CardTitle>Videos, tours &amp; floor plans</CardTitle>
+              <span className="text-xs text-muted-foreground">{media.length ? `${media.length} item${media.length === 1 ? "" : "s"}` : "Shown on the website listing"}</span>
+            </CardHeader>
+            <CardContent>
+              <MediaManager propertyId={property.id} media={media} canEdit={property.canEdit} />
+            </CardContent>
+          </Card>
 
           <Card>
             <CardHeader>

@@ -51,7 +51,7 @@ Change these before using real data.
 | --- | --- |
 | `npm run dev` / `build` / `start` | Next.js |
 | `npm run typecheck` / `lint` | `next typegen && tsc`, ESLint |
-| `npm test` | Service test-suites (RBAC, validation, commission, hierarchy, imports, tasks, daily reports & rollover, scoring, client isolation, public listings, website bookings, saved homes, recommendations, password reset, lead rules, deals, contracts, documents, reservations) on a throwaway `test.db` |
+| `npm test` | Service test-suites (RBAC, validation, commission, hierarchy, imports, tasks, daily reports & rollover, scoring, client isolation, public listings, website bookings, saved homes, recommendations, password reset, lead rules, deals, contracts, documents, reservations, listing media) on a throwaway `test.db` |
 | `npm run db:backup` | Online copy of the SQLite database to `backups/` (do this before migrating) |
 | `npm run import:website-listings` | Import the website's former hard-coded listings (`samples/website-listings.json`); idempotent by reference |
 | `npm run cron:daily` | Run the daily rollover once (for a system cron) |
@@ -195,6 +195,7 @@ Cookie-authenticated writes must come from an allowed origin (CSRF check); CORS 
 | Area | Endpoints |
 | --- | --- |
 | Auth | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/register` (always a CLIENT), `POST /auth/password`, `POST /auth/forgot-password` (e-mails a 6-digit code), `POST /auth/verify-reset-code` (→ reset token), `POST /auth/reset-password` |
+| Listing media | `POST /media-upload/:propertyId?kind=VIDEO|FLOOR_PLAN|BROCHURE&title=` (raw file body, streamed to disk; staff, same-origin; skipped by the proxy), `GET /media/:id` (range requests; public while the listing is live) |
 | Documents | `GET /documents/:id` (`?download=1`) — streams a file after a permission check (staff: records in scope; clients: their own file) |
 | Users | `GET/POST /users`, `GET/PUT /users/:id` (admins/managers) |
 | Clients | `GET/POST /clients`, `GET/PUT/DELETE /clients/:id`, `GET/POST/DELETE /clients/:id/portal-access` |
@@ -239,6 +240,16 @@ All enforced in the service layer (board, menus, forms and API alike):
   receipt) `→ CONFIRMED` (staff verify; property Reserved) or `CANCELLED`; unpaid ones expire
   after `Settings.reservationHoldHours`. Deposit = listing's `bookingDeposit`, else
   `saleDepositPercent` of the price or `rentDepositMonths` of rent.
+
+### Listing media
+
+`PropertyMedia` holds videos, 360° tours, floor plans and a brochure next to the photos
+(`PropertyImage`). Links are parsed in `lib/media-links.ts`: YouTube (privacy-enhanced
+embed), Vimeo, Matterport and Kuula become players; any other https link is shown as a plain
+link, so listings never frame arbitrary sites. Uploads (video ≤ 200 MB, floor plan ≤ 15 MB,
+brochure ≤ 30 MB) are streamed to `storage/media/<propertyId>/`, type-checked from their first
+bytes, and removed with the item or the listing. `experimental.proxyClientMaxBodySize` is 12 MB
+(the proxy cuts off larger bodies), which is why big uploads use their own route.
 
 ### Documents & e-mail
 
@@ -348,7 +359,7 @@ file. Never run `db:seed` / `db:reset` on real data — they wipe the CRM tables
 `User` · `Session` · `Owner` · `Property` · `PropertyImage` · `PropertyInterest`
 (lead/client ↔ property) · `Lead` · `Client` · `Viewing` · `Deal` · `Task` · `TaskEvent` ·
 `DailyTaskTemplate` · `AgentActivity` · `DailyReport` · `ScoringRule` · `SystemJob` ·
-`Document` · `LeadPassRequest` · `Reservation` · `ContractTemplate` · `Contract` · `OtpCode` · `EmailLog` ·
+`PropertyMedia` · `Document` · `LeadPassRequest` · `Reservation` · `ContractTemplate` · `Contract` · `OtpCode` · `EmailLog` ·
 `ExternalListing` · `ImportRun` · `ImportRecord` · `Note` · `Activity` · `Settings` ·
 `Counter` (ELT-/DL- references).
 
@@ -374,8 +385,8 @@ filtered/sorted column. Money is stored in whole QAR (`Int`).
   to a task for the team.
 - Online card payments are not connected yet ("coming soon"); reservations are paid by Fawran /
   bank transfer and verified by staff.
-- Documents are stored on local disk like photos; move them to private object storage before
-  running several instances.
+- Documents and listing media are stored on local disk like photos; move them to object storage
+  before running several instances.
 - The in-process scheduler suits a single server; use the cron endpoint for several instances.
 - Import field mappings are provisional until verified against real portal exports.
 - The seed uses Unsplash photo URLs; they need internet access to display.

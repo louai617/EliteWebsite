@@ -61,8 +61,28 @@ export interface ListingCard {
   is_featured: boolean;
   is_verified: boolean;
   is_exclusive: boolean;
+  /** The listing has a video / a 360° virtual tour (badges on cards). */
+  has_video?: boolean;
+  has_tour?: boolean;
   listed_at: string;
   listed_days_ago: number;
+}
+
+/** A video or 360° tour: `embed_url` plays in an iframe; otherwise `url` is a file (provider "file") or an external link. */
+export interface ListingMediaItem {
+  id: string;
+  title: string | null;
+  provider: 'youtube' | 'vimeo' | 'matterport' | 'kuula' | 'link' | 'file' | string;
+  url: string;
+  embed_url: string | null;
+  mime_type: string | null;
+}
+
+export interface ListingMedia {
+  videos: ListingMediaItem[];
+  tours: ListingMediaItem[];
+  floor_plans: (ListingMediaItem & { is_pdf: boolean })[];
+  brochure: { title: string | null; url: string } | null;
 }
 
 export interface Listing extends ListingCard {
@@ -86,6 +106,8 @@ export interface Listing extends ListingCard {
   payment_plan: PaymentMilestone[];
   seo_title: string | null;
   seo_description: string | null;
+  /** Optional so an older API response still renders. */
+  media?: ListingMedia;
   agent: ListingAgent;
   market: {
     avg_price: number;

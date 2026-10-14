@@ -3,11 +3,14 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
 import { useTranslations, useLocale } from 'next-intl';
-import { X, ChevronLeft, ChevronRight, Expand, Camera } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Expand, Camera, Box, PlayCircle } from 'lucide-react';
 
 interface PropertyGalleryProps {
   images: string[];
   title: string;
+  /** Show "Video" / "360° tour" shortcuts to the media section. */
+  hasVideo?: boolean;
+  hasTour?: boolean;
 }
 
 /**
@@ -17,8 +20,9 @@ interface PropertyGalleryProps {
  * is parked on the dialog so screen readers announce it. Arrow direction flips
  * under RTL so "next" always means "forward" visually.
  */
-export default function PropertyGallery({ images, title }: PropertyGalleryProps) {
+export default function PropertyGallery({ images, title, hasVideo = false, hasTour = false }: PropertyGalleryProps) {
   const t = useTranslations('property');
+  const tMedia = useTranslations('media');
   const locale = useLocale();
   const isRtl = locale === 'ar';
 
@@ -111,6 +115,22 @@ export default function PropertyGallery({ images, title }: PropertyGalleryProps)
             />
           </button>
         ))}
+
+        {/* Shortcuts to the video / 360° tour in the media section */}
+        {(hasVideo || hasTour) && (
+          <div className="absolute bottom-4 start-4 z-10 flex gap-2">
+            {hasVideo && (
+              <a href="#media-video" className="flex items-center gap-2 rounded-full bg-secondary/90 px-4 py-2.5 text-sm font-semibold text-white shadow-lg backdrop-blur transition hover:bg-primary">
+                <PlayCircle className="h-4 w-4" aria-hidden="true" /> {tMedia('watch_video')}
+              </a>
+            )}
+            {hasTour && (
+              <a href="#media-tour" className="flex items-center gap-2 rounded-full bg-secondary/90 px-4 py-2.5 text-sm font-semibold text-white shadow-lg backdrop-blur transition hover:bg-primary">
+                <Box className="h-4 w-4" aria-hidden="true" /> {tMedia('view_tour')}
+              </a>
+            )}
+          </div>
+        )}
 
         {/* Photo count / open-all affordance */}
         <button
