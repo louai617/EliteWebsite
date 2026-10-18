@@ -30,6 +30,8 @@ export interface PublicFilters {
   priceMin?: number;
   priceMax?: number;
   featured?: boolean;
+  /** Only these listing references (the website's saved homes, kept in the visitor's browser). */
+  refs?: string[];
 }
 
 const cardSelect = {
@@ -190,6 +192,7 @@ export function publicListingWhere(f: PublicFilters): Prisma.PropertyWhereInput 
       f.priceMin !== undefined ? { price: { gte: f.priceMin } } : {},
       f.priceMax !== undefined ? { price: { lte: f.priceMax } } : {},
       f.featured ? { isFeatured: true } : {},
+      f.refs?.length ? { reference: { in: f.refs } } : {},
     ],
   };
 }

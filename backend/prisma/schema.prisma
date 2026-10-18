@@ -622,6 +622,7 @@ model Lead {
   workActivities AgentActivity[]
   documents      Document[]
   passRequests   LeadPassRequest[]
+  reservations   Reservation[]
 
   @@index([status])
   @@index([source])
@@ -1271,8 +1272,18 @@ model Reservation {
   reference        String            @unique
   propertyId       String
   property         Property          @relation(fields: [propertyId], references: [id], onDelete: Restrict)
-  clientId         String
-  client           Client            @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  /// Set for reservations made by an existing CRM client (older client-portal reservations).
+  clientId         String?
+  client           Client?           @relation(fields: [clientId], references: [id], onDelete: Restrict)
+  /// Website reservations (no account): the lead created for the visitor.
+  leadId           String?
+  lead             Lead?             @relation(fields: [leadId], references: [id], onDelete: SetNull)
+  /// Contact details typed by the visitor on the website.
+  contactName      String?
+  contactPhone     String?
+  contactEmail     String?
+  /// Keyed hash of the private link token e-mailed to the visitor (upload receipt, view status).
+  accessTokenHash  String?           @unique
   agentId          String?
   agent            User?             @relation("ReservationAgent", fields: [agentId], references: [id], onDelete: SetNull)
   amount           Int
@@ -1296,6 +1307,7 @@ model Reservation {
   documents Document[]
 
   @@index([clientId, status])
+  @@index([leadId])
   @@index([propertyId, status])
   @@index([agentId, status])
   @@index([status, createdAt])

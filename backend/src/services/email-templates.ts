@@ -101,8 +101,8 @@ const money = (amount: number, currency = "QAR") => `${currency} ${amount.toLoca
 
 // ───────────────────────────── Templates ─────────────────────────────
 
-export function passwordResetCode(input: { name: string; code: string; minutes: number; portal: "client" | "staff" }): RenderedEmail {
-  const where = input.portal === "staff" ? "the ELITE agent app" : "your ELITE account";
+export function passwordResetCode(input: { name: string; code: string; minutes: number }): RenderedEmail {
+  const where = "the ELITE agent app";
   return {
     subject: `${input.code} is your ELITE password reset code`,
     html: layout({
@@ -139,25 +139,7 @@ export function passwordChanged(input: { name: string; when: string; loginUrl: s
   };
 }
 
-export function welcomeClient(input: { name: string; dashboardUrl: string }): RenderedEmail {
-  return {
-    subject: "Welcome to ELITE Real Estate",
-    html: layout({
-      title: "Welcome",
-      preheader: "Your account is ready: book viewings, save homes and track everything in one place.",
-      body: [
-        h1(`Welcome, ${input.name.split(" ")[0]}`),
-        p("Your ELITE account is ready. From your dashboard you can:"),
-        `<ul style="margin:0 0 16px;padding-left:20px;font-size:15px;line-height:26px;color:${INK}"><li>Book viewings in a few taps</li><li>Save homes and get price-drop alerts</li><li>Reserve a home and follow every step to the keys</li></ul>`,
-        button(input.dashboardUrl, "Open my dashboard"),
-        small("An agent will be in touch shortly to understand what you're looking for."),
-      ].join(""),
-    }),
-    text: textBlock([`Welcome, ${input.name}!`, "", "Your ELITE account is ready.", `Open your dashboard: ${input.dashboardUrl}`]),
-  };
-}
-
-export function viewingBooked(input: { name: string; property: string; reference: string; when: string; address: string; agent: string | null; manageUrl: string; confirmed: boolean }): RenderedEmail {
+export function viewingBooked(input: { name: string; property: string; reference: string; when: string; address: string; agent: string | null; listingUrl: string; confirmed: boolean }): RenderedEmail {
   const title = input.confirmed ? "Your viewing is confirmed" : "Viewing requested";
   return {
     subject: `${title}: ${input.property}`,
@@ -174,11 +156,11 @@ export function viewingBooked(input: { name: string; property: string; reference
           ["Where", input.address],
           ["Agent", input.agent],
         ]),
-        button(input.manageUrl, "Manage my bookings"),
-        small("Need to change the time? Reschedule or cancel from your bookings up to 2 hours before."),
+        button(input.listingUrl, "View the property"),
+        small("Need to change the time? Reply to this e-mail or call your agent."),
       ].join(""),
     }),
-    text: textBlock([`Hi ${input.name},`, "", title, `Property: ${input.property} (${input.reference})`, `When: ${input.when}`, `Where: ${input.address}`, input.agent ? `Agent: ${input.agent}` : null, "", `Manage: ${input.manageUrl}`]),
+    text: textBlock([`Hi ${input.name},`, "", title, `Property: ${input.property} (${input.reference})`, `When: ${input.when}`, `Where: ${input.address}`, input.agent ? `Agent: ${input.agent}` : null, "", `Property page: ${input.listingUrl}`, "Need to change the time? Reply to this e-mail or call your agent."]),
   };
 }
 
@@ -212,9 +194,9 @@ export function reservationCreated(input: { name: string; reference: string; pro
           ["Account number", input.bank.accountNumber],
           ["SWIFT", input.bank.swift],
         ]),
-        callout(`Write <strong>${esc(input.reference)}</strong> as the payment reference, then upload the Fawran / transfer receipt in your dashboard.${input.bank.instructions ? `<br><br>${esc(input.bank.instructions)}` : ""}`),
+        callout(`Write <strong>${esc(input.reference)}</strong> as the payment reference, then upload the Fawran / transfer receipt on your private reservation page.${input.bank.instructions ? `<br><br>${esc(input.bank.instructions)}` : ""}`),
         button(input.manageUrl, "Upload my payment proof"),
-        small("Card payments are coming soon."),
+        small("This link is private to you: please don't share it. Card payments are coming soon."),
       ].join(""),
     }),
     text: textBlock([
@@ -234,7 +216,7 @@ export function reservationCreated(input: { name: string; reference: string; pro
   };
 }
 
-export function reservationUpdate(input: { name: string; reference: string; property: string; status: "SUBMITTED" | "CONFIRMED" | "CANCELLED"; amount: number; currency: string; reason?: string | null; manageUrl: string }): RenderedEmail {
+export function reservationUpdate(input: { name: string; reference: string; property: string; status: "SUBMITTED" | "CONFIRMED" | "CANCELLED"; amount: number; currency: string; reason?: string | null; manageUrl?: string | null }): RenderedEmail {
   const copy = {
     SUBMITTED: { subject: `We received your payment proof (${input.reference})`, title: "Payment proof received", line: "Thanks! We received your payment proof. Our team is checking it with the bank and will confirm your reservation shortly." },
     CONFIRMED: { subject: `Reservation ${input.reference} confirmed`, title: "Your reservation is confirmed", line: `We received your deposit of ${money(input.amount, input.currency)}. ${input.property} is now reserved for you — your agent will contact you about the next steps and the contract.` },
@@ -255,10 +237,10 @@ export function reservationUpdate(input: { name: string; reference: string; prop
           ["Deposit", money(input.amount, input.currency)],
           ["Reason", input.status === "CANCELLED" ? input.reason : null],
         ]),
-        button(input.manageUrl, "View my reservation"),
+        input.manageUrl ? button(input.manageUrl, "View my reservation") : "",
       ].join(""),
     }),
-    text: textBlock([`Hi ${input.name},`, "", copy.line, input.reason ? `Reason: ${input.reason}` : null, "", input.manageUrl]),
+    text: textBlock([`Hi ${input.name},`, "", copy.line, input.reason ? `Reason: ${input.reason}` : null, "", input.manageUrl ?? null]),
   };
 }
 

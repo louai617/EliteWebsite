@@ -114,7 +114,6 @@ export default async function TaskPage({ params }: PageProps<"/tasks/[id]">) {
                   { label: "Completed", value: task.completedAt && formatDateTime(task.completedAt) },
                   { label: "Time to complete", value: duration(task.startedAt ?? task.createdAt, task.completedAt) },
                   { label: "Last updated", value: <RelativeTime date={task.updatedAt} /> },
-                  { label: "Visible to client", value: task.clientVisible ? "Yes" : "No", hidden: !task.clientId },
                 ]}
               />
               {related.length > 0 && (

@@ -4,7 +4,7 @@ Internal CRM and REST API for ELITE Real Estate (Doha): properties (Residential 
 Company / Private), owners, leads and the sales pipeline, clients, viewings, deals and
 commission, a task tracker with daily tasks, daily activity reports, performance scoring,
 Property Finder / Qatar Living imports, notes and a full activity log. It is also the backend
-of the website's client portal (`frontend/`, port 3001).
+of the public website (`frontend/`, port 3001), which has no visitor accounts.
 
 **Stack:** Next.js 16 (App Router, Server Components & Server Actions) · TypeScript ·
 Tailwind CSS 4 · shadcn/ui (Radix) · Prisma 7 · SQLite · Zod · React Hook Form · Lucide.
@@ -29,10 +29,11 @@ Production: `npm run build && npm start` (apply migrations with `npm run db:depl
 | App | Port | Production | What |
 | --- | --- | --- | --- |
 | `backend/` | **3002** | app.eliterealestate.qa | Agent app: staff CRM (UI) + REST API (`/api/*`) + database, auth, integrations, scheduler |
-| `frontend/` | **3001** | eliterealestate.qa | Website + client dashboard; reads all listings from `/api/public/properties` |
+| `frontend/` | **3001** | eliterealestate.qa | Public website (no accounts); reads listings from `/api/public/properties`, books viewings and reservations through `/api/public/*` |
 
-Staff who sign in on the website are sent to the CRM; client accounts that open the CRM are
-sent to the portal. On localhost both apps share the session cookie.
+Only staff accounts can sign in (the website's **Agent portal** button opens `/login`).
+Client-portal accounts created before the portal was retired are kept in the database but
+can no longer sign in or reset their password.
 
 ### Development accounts (created by the seed)
 
@@ -41,7 +42,6 @@ sent to the portal. On localhost both apps share the session cookie.
 | Admin   | admin@elite.qa                                                            | `Admin@2026` |
 | Manager | fatima@elite.qa, james@elite.qa                                           | `Elite@2026` |
 | Agent   | omar@elite.qa, aisha@elite.qa, rohan@elite.qa, layla@elite.qa, youssef@elite.qa | `Elite@2026` |
-| Client (portal, http://localhost:3001/en/login) | client@elite.qa                    | `Client@2026` |
 
 Change these before using real data.
 
@@ -70,14 +70,13 @@ Change these before using real data.
 | `SESSION_SECRET` | ≥ 16 chars; HMAC key for session tokens. **Required in production.** |
 | `NEXT_PUBLIC_BUSINESS_TIMEZONE` | Business time zone (default `Asia/Qatar`); day boundaries for daily tasks/reports. |
 | `APP_URL` | This app's public origin (production `https://app.eliterealestate.qa`); absolute photo URLs in the public API. Defaults to the request origin. |
-| `CLIENT_APP_URL` | Website origin (default `http://localhost:3001`); CORS default, portal redirect, "view on website" links. |
+| `CLIENT_APP_URL` | Website origin (default `http://localhost:3001`); CORS default, links in e-mails (property pages, private reservation links), "view on website" links. |
 | `WEBSITE_REVALIDATE_SECRET` | Shared with the website's `REVALIDATE_SECRET`; enables instant website refresh after property changes. Empty = website refreshes within 60 s. |
 | `WEBSITE_REVALIDATE_URL` | Optional; defaults to `CLIENT_APP_URL/api/revalidate`. |
 | `SMTP_HOST` / `SMTP_PORT` / `SMTP_SECURE` / `SMTP_USER` / `SMTP_PASS` | Outgoing e-mail (password codes, viewing and reservation e-mails). Without `SMTP_HOST`: saved to `storage/outbox` in development, failure (+ a task for the team) in production. |
 | `MAIL_FROM` / `MAIL_REPLY_TO` | Sender, e.g. `ELITE Real Estate <no-reply@eliterealestate.qa>`. |
 | `CORS_ORIGINS` | Optional comma-separated allow-list for browser calls to `/api`. |
-| `CLIENT_PORTAL_URL` | Optional; where CLIENT accounts are sent from the CRM. |
-| `SESSION_COOKIE_SAMESITE` / `SESSION_COOKIE_DOMAIN` | Optional cookie settings for split-domain deployments. |
+| `SESSION_COOKIE_SAMESITE` / `SESSION_COOKIE_DOMAIN` | Optional cookie settings; leave the domain unset so the staff cookie stays on the agent app host. |
 | `SCHEDULER_ENABLED` | `false` disables the in-process daily rollover (use a cron instead). |
 | `CRON_SECRET` | Enables `POST /api/cron/daily-rollover` with `Authorization: Bearer <secret>`. |
 | `PROPERTY_FINDER_FEED_URL` / `PROPERTY_FINDER_API_KEY` | Optional remote JSON feed for imports (see Integrations). |
@@ -126,8 +125,10 @@ public values (`frontend/.env.example`).
   overdue and missed work, 30-day trend; weights editable by admins.
 - **Imports** — Property Finder and Qatar Living (upload a JSON export or fetch a configured
   feed), with dry runs and per-record logs.
-- **Client portal accounts** — managers give a client a login from the client page; clients
-  can also self-register on the website.
+- **Website bookings without accounts** — visitors book viewings (a viewing on a WEBSITE lead
+  with a confirm task) and reserve homes (the reservation carries their contact details and a
+  private link for the Fawran / transfer receipt; only a keyed hash of the link is stored).
+  A visitor who already has an open lead for the same listing (same phone) keeps that lead.
 - **Notes & activity** — notes on any record; an append-only activity log feeding every
   timeline and the global Activity page.
 - **Search** — ⌘K command palette and a results page across leads, clients, owners,
@@ -169,12 +170,12 @@ backend/
   | Role | Access |
   | --- | --- |
   | `ADMIN` | Everything, incl. company settings, scoring weights and all users |
-  | `MANAGER` | Whole team's data, assignments, task templates, team reports/performance, imports, client portal access |
+  | `MANAGER` | Whole team's data, assignments, task templates, team reports/performance, imports |
   | `AGENT` | Own leads/clients/viewings/deals/tasks/reports/score; shared inventory (edits own listings) |
-  | `CLIENT` | Client portal only: their own shortlist, viewings, enquiries, deals and tasks shared with them |
+  | `CLIENT` | Retired (old client-portal accounts): no permissions and can't sign in |
 
   Data scoping is enforced in the service layer via `scope.*` filters (a CLIENT gets an empty
-  scope everywhere in the CRM) and the portal services are keyed on the session's `clientId`.
+  scope everywhere).
   Roles always come from the database session, never from the request.
 - **Errors** — `authedAction` wraps every mutation: auth → Zod validation → service →
   revalidation. Prisma/unknown errors are logged server-side and returned as safe messages;
@@ -187,18 +188,19 @@ backend/
 Every response is `{ "ok": true, "data": … }` or `{ "ok": false, "error": { "code", "message", "fields?" } }`
 (`VALIDATION` 422, `UNAUTHORIZED` 401, `FORBIDDEN` 403, `NOT_FOUND` 404, `CONFLICT` 409,
 `RATE_LIMITED` 429, `INTERNAL` 500 — internal details are never returned).
-Auth: the httpOnly session cookie (browsers, `credentials: "include"`) or
-`Authorization: Bearer <token>` (`POST /api/auth/login` with `"issueToken": true`).
+Auth (staff only): the httpOnly session cookie or `Authorization: Bearer <token>`
+(`POST /api/auth/login` with `"issueToken": true`). The website only uses the `/public/*`
+endpoints and sends no cookies.
 Cookie-authenticated writes must come from an allowed origin (CSRF check); CORS allows
 `CORS_ORIGINS` only. Bodies are JSON and validated with the same Zod schemas as the CRM.
 
 | Area | Endpoints |
 | --- | --- |
-| Auth | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/register` (always a CLIENT), `POST /auth/password`, `POST /auth/forgot-password` (e-mails a 6-digit code), `POST /auth/verify-reset-code` (→ reset token), `POST /auth/reset-password` |
+| Auth | `POST /auth/login`, `POST /auth/logout`, `GET /auth/me`, `POST /auth/password`, `POST /auth/forgot-password` (e-mails a 6-digit code), `POST /auth/verify-reset-code` (→ reset token), `POST /auth/reset-password` |
 | Listing media | `POST /media-upload/:propertyId?kind=VIDEO|FLOOR_PLAN|BROCHURE&title=` (raw file body, streamed to disk; staff, same-origin; skipped by the proxy), `GET /media/:id` (range requests; public while the listing is live) |
-| Documents | `GET /documents/:id` (`?download=1`) — streams a file after a permission check (staff: records in scope; clients: their own file) |
+| Documents | `GET /documents/:id` (`?download=1`) — streams a file after a permission check (staff with the record in scope) |
 | Users | `GET/POST /users`, `GET/PUT /users/:id` (admins/managers) |
-| Clients | `GET/POST /clients`, `GET/PUT/DELETE /clients/:id`, `GET/POST/DELETE /clients/:id/portal-access` |
+| Clients | `GET/POST /clients`, `GET/PUT/DELETE /clients/:id` |
 | Leads | `GET/POST /leads`, `GET/PUT/DELETE /leads/:id`, `POST /leads/:id/status`, `POST /leads/:id/assign` |
 | Properties | `GET/POST /properties` (filters incl. `category`, `subcategory`), `GET /properties/categories`, `GET/PATCH/DELETE /properties/:id`, `POST /properties/:id/postings` |
 | Tasks | `GET/POST /tasks` (`scope=mine|team`, filters), `GET/PATCH/DELETE /tasks/:id`, `POST /tasks/:id/notes`, `POST /tasks/:id/assign`, `GET /tasks/workload`, `GET/POST /tasks/daily-templates`, `PUT/DELETE /tasks/daily-templates/:id` |
@@ -206,10 +208,9 @@ Cookie-authenticated writes must come from an allowed origin (CSRF check); CORS 
 | Reports | `GET /reports?preset=today|yesterday|week|month|custom&from&to&agentId`, `GET /reports/daily?agentId&date`, `POST /reports/daily/submit` |
 | Performance | `GET /performance`, `GET /performance/:agentId`, `GET/PUT/DELETE /performance/scoring` |
 | Imports | `GET/POST /integrations/property-finder`, `GET/POST /integrations/qatar-living`, `GET /migrations`, `GET /migrations/:id` |
-| Client portal | `GET /portal/overview`, `/portal/properties`, `/portal/viewings`, `/portal/leads`, `/portal/tasks`, `/portal/reports`, `/portal/activity`, `/portal/data`, `GET/PATCH /portal/account`, `POST /portal/enquiries` |
-| Client documents & reservations | `GET/POST /portal/documents` (multipart: `kind`, `file`, `number?`, `expiresAt?`, `reservationId?`), `GET /portal/reservations/quote?property=REF`, `GET/POST /portal/reservations` (`method: FAWRAN`; `CARD` is "coming soon"), `PATCH/DELETE /portal/reservations/:id` |
-| Client dashboard | `GET /portal/bookings/slots?property&date`, `GET/POST /portal/bookings`, `PATCH/DELETE /portal/bookings/:id` (reschedule / cancel with reason), `GET /portal/bookings/:id/calendar` (.ics), `GET/POST /portal/saved`, `DELETE /portal/saved/:ref`, `GET/PUT /portal/preferences`, `GET /portal/recommendations` |
-| Public | `GET /public/properties` (`q`, `purpose`, `category`, `type`, `area`, `beds`, `priceMin`, `priceMax`, `featured`, `sort`, `page`, `pageSize`), `GET /public/properties/:ref` (details, agent card, market data, similar homes), `POST /public/leads` (website forms & chat; rate-limited, honeypot), `GET /health` |
+| Public | `GET /public/properties` (`q`, `purpose`, `category`, `type`, `area`, `beds`, `priceMin`, `priceMax`, `featured`, `refs` (saved homes), `sort`, `page`, `pageSize`), `GET /public/properties/:ref` (details, agent card, market data, similar homes), `POST /public/leads` (website forms & chat; rate-limited, honeypot), `GET /health` |
+| Public bookings | `GET /public/viewings/slots?property&date`, `POST /public/viewings` (`property`, `startsAt`, `name`, `phone`, `email`, `note?`) |
+| Public reservations | `GET /public/reservations/quote?property=REF`, `POST /public/reservations` (`method: FAWRAN`, `CARD` is "coming soon"; contact details) → `{ reference, token }`, `GET/PATCH/DELETE /public/reservations/:token` (status / payer details / cancel), `POST /public/reservations/:token/receipt` (multipart `file`) |
 | Cron | `POST /cron/daily-rollover` (`Authorization: Bearer $CRON_SECRET`) |
 
 The CRM UI itself uses Server Actions over the same service layer; `/api/search` and

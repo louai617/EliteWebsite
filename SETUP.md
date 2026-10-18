@@ -5,7 +5,7 @@ Two portals run side by side and share one database. Start the **agent app first
 | Portal | Folder | Local | Production | Who |
 | --- | --- | --- | --- | --- |
 | Agent app (CRM + API) | `backend/` | http://localhost:3002 | https://app.eliterealestate.qa | Agents, managers, admin |
-| Website + client dashboard | `frontend/` | http://localhost:3001 | https://eliterealestate.qa | Visitors and clients |
+| Website | `frontend/` | http://localhost:3001 | https://eliterealestate.qa | Visitors (no accounts) |
 
 ### How the two portals connect
 
@@ -15,10 +15,13 @@ Two portals run side by side and share one database. Start the **agent app first
   *Available* or *Reserved* and **Show on website** is on (property form → *Website* section).
   Edits, price changes, photos, *Sold*/*Rented* and unpublishing show up on the website within
   a couple of seconds (instant refresh, see step 4), or within 60 s at most.
-- **Client acts → agent sees it.** Viewings booked on the website land in the agent's
-  **Viewings** (badge *Website · confirm*) with a high-priority *Confirm website booking*
-  task. Confirming it in the agent app shows *Confirmed* in the client's dashboard. Saved
-  homes, preferences, enquiries and cancellations appear on the client's page in the agent app.
+- **Visitor acts → agent sees it.** The website has no visitor accounts. Viewings booked on
+  the website (name, mobile, e-mail + a free time) land in the agent's **Viewings** (badge
+  *Website · confirm*) as a **website lead** with a high-priority *Confirm website booking*
+  task; confirming it e-mails the visitor. Reservations appear in **Reservations** with the
+  visitor's details; the visitor uploads the receipt from a private link.
+- **Agent portal.** The website header's **Agent portal** button opens the agent app's
+  sign-in page. Only staff accounts can sign in.
 
 ## 1. Requirements
 
@@ -66,7 +69,7 @@ npm run dev
 `import:website-listings` is safe to run more than once: listings that already exist (same
 reference, e.g. `ELT-00123`) are skipped. The seed runs it automatically.
 
-Run the seed if you want the demo logins below (including the client account) and the
+Run the seed if you want the demo logins below and the
 sample history. Skip it if you have entered data you want to keep.
 
 The October update's migration (`lead_rules_documents_contracts`) keeps every record and maps
@@ -74,7 +77,11 @@ the old deal statuses: *Negotiation / Contract pending / Contract signed* → **
 *Closed won* → **Closed**, *Closed lost* → **Cancelled**. The 24-hour clock for existing leads
 starts when you run the migration, so nothing is moved to the admin straight away.
 
-## 4. Frontend (website + client portal), terminal 2
+The `guest_reservations` migration (website without visitor accounts) only adds columns to
+reservations; every existing reservation, client and client-portal user is kept. Those old
+client accounts simply can't sign in any more.
+
+## 4. Frontend (website), terminal 2
 
 ```bash
 cd frontend
@@ -104,10 +111,9 @@ Without it everything still works; the website just picks up agent changes withi
 | Admin | http://localhost:3002/login | admin@elite.qa | `Admin@2026` |
 | Manager | http://localhost:3002/login | fatima@elite.qa or james@elite.qa | `Elite@2026` |
 | Agent | http://localhost:3002/login | omar@elite.qa (also aisha, rohan, layla, youssef) | `Elite@2026` |
-| Client | http://localhost:3001/en/login | client@elite.qa | `Client@2026` |
 
-Staff who log in on the website are sent to the CRM automatically; a client who opens the
-CRM is sent to their portal. These are development accounts — change them before real use.
+On the website, the **Agent portal** button opens this same login page. These are development
+accounts — change them before real use.
 
 ## 6. What to try
 
@@ -118,7 +124,6 @@ CRM is sent to their portal. These are development accounts — change them befo
 - **Reports**: Today / Yesterday / This week / This month / Custom range.
 - **Performance**: leaderboard, per-agent page, and "How the score works" (admin can change weights).
 - **Imports**: upload `backend/samples/property-finder.sample.json` or `qatar-living.sample.json`. Keep "Dry run" ticked to preview, untick it to import.
-- **Clients → open a client → Client portal** card: give that client a portal login.
 
 **Agent posts, website shows it (:3002 → :3001)**
 - **Properties → New property**: fill it in, keep **Show on website** on in the *Website*
@@ -153,19 +158,19 @@ CRM is sent to their portal. These are development accounts — change them befo
   text with `{{placeholders}}`, fields for agents, live preview. Two starting drafts (sale,
   tenancy) are created on first use — have them reviewed by your legal adviser.
 - **Clients → a client → Documents**: QID, passport, visa, CR, signed contract… with numbers
-  and expiry dates. Files are private: only staff who can see the record (and the client, for
-  their own file) can open them.
+  and expiry dates. Files are private: only staff who can see the record can open them.
 
 **Reservations & payments**
 - Admin: **Settings → Reservations & payments** — Fawran alias, bank, IBAN, deposit rules.
-- Client on the website: open an *Available* property → **Reserve this home** → choose
-  **Fawran / bank transfer** (card payments show *Coming soon*) → bank details with copy
-  buttons → **Upload the payment receipt**. Agent app → **Reservations** → *Confirm payment*:
-  the home becomes *Reserved* and the client is e-mailed. Unpaid reservations are released
+- Visitor on the website (no account): open an *Available* property → **Reserve this home** →
+  **Fawran / bank transfer** (card payments show *Coming soon*) + name, mobile, e-mail → private
+  reservation page with bank details and **Upload the payment receipt** (the receipt is also
+  filed on the visitor's lead). Agent app → **Reservations** → *Confirm payment*: the home
+  becomes *Reserved* and the visitor is e-mailed. Unpaid reservations are released
   after the hold time (48 h by default).
 
 **E-mail & password reset**
-- **Forgot password?** on both sign-in pages sends a 6-digit code (valid 10 minutes, 5 tries),
+- **Forgot password?** on the agent app's sign-in page sends a 6-digit code (valid 10 minutes, 5 tries),
   then the person sets a new password and every other device is signed out.
 - Without SMTP settings, e-mails are saved to `backend/storage/outbox/` — open the `.html`
   files in a browser to see them (and the code). Settings → *E-mail* → **Send me a test e-mail**.
@@ -175,23 +180,18 @@ CRM is sent to their portal. These are development accounts — change them befo
 - **Log activity** (top of My tasks, or New → Logged activity): log a call and watch the "Make 20 calls" daily task progress.
 - **Reports** → "My report for today": write and submit the end-of-day summary.
 
-**As a client (website, :3001)**
-- Log in as client@elite.qa, or register a new account at http://localhost:3001/en/register.
+**As a visitor (website, :3001, no account)**
 - Open any property → **Book a viewing**: pick a day and a free time (the agent's calendar is
-  checked) → *Add to calendar*. Then in the agent app (omar@elite.qa or admin) open
-  **Viewings → list → "Website bookings to confirm"** and choose ⋯ → *Confirm*; the client's
-  dashboard switches to *Confirmed*.
-- Tap the ♥ on listings to save them. **Dashboard**:
-  - **Overview**: your journey (Joined → Enquiry → Viewing → Offer → Contract → Keys), next
-    viewing, your agent, price-drop alerts, homes picked for you.
-  - **Bookings**: countdown, call/WhatsApp the agent, directions, add to calendar,
-    reschedule or cancel (up to 2 hours before).
-  - **Saved homes**: price changes since you saved, compare up to 3 side by side.
-  - **For you** and **Preferences**: what you're looking for → matched listings. Your agent
-    sees the same preferences on your client page.
-  - **Documents**: upload your QID / passport; see receipts and contracts.
-  - Bookings also lists **Reservations** with the payment details and receipt upload.
-  - Enquiries, Tasks, Reports, Activity, Account.
+  checked), enter name, mobile and e-mail → *Add to calendar*. In the agent app (omar@elite.qa
+  or admin) the booking is under **Viewings → "Website bookings to confirm"** and the visitor is
+  a new website lead; choose ⋯ → *Confirm* and the visitor is e-mailed.
+- **Reserve this home** → enter your details → you land on your private reservation page
+  (the link is also e-mailed): bank / Fawran details with copy buttons, payer details and
+  **Upload the payment receipt**. In the agent app, **Reservations** shows it as *Payment to
+  verify* → *Confirm payment* marks the home Reserved.
+- Tap the ♥ on listings, then the ♥ in the header (**Saved homes**, `/en/saved`): saved on
+  this device only; compare up to 3 side by side.
+- **Agent portal** in the header opens the agent app login.
 
 ## 7. Useful commands (in `backend/`)
 
@@ -233,7 +233,6 @@ website and `app.eliterealestate.qa` to the agent app.
 APP_URL="https://app.eliterealestate.qa"
 CLIENT_APP_URL="https://eliterealestate.qa"
 CORS_ORIGINS="https://eliterealestate.qa,https://www.eliterealestate.qa"
-SESSION_COOKIE_DOMAIN=".eliterealestate.qa"
 SESSION_SECRET="<long random value>"
 WEBSITE_REVALIDATE_SECRET="<long random value, same as the website's REVALIDATE_SECRET>"
 SMTP_HOST="<your SMTP server>"
@@ -253,17 +252,15 @@ REVALIDATE_SECRET=<same value as WEBSITE_REVALIDATE_SECRET>
 # API_INTERNAL_URL=http://127.0.0.1:3002/api   # optional, if both run on one server
 ```
 
-Both are subdomains of the same site, so one login cookie (`.eliterealestate.qa`) works on
-both: a staff member who signs in on the website is sent to the agent app, a client who opens
-the agent app is sent to their dashboard. Secrets stay in the agent app's `.env`; the
-website's only secret, `REVALIDATE_SECRET`, is server-only and never reaches the browser.
+Leave `SESSION_COOKIE_DOMAIN` unset: the login cookie then stays on app.eliterealestate.qa
+only (the website has no accounts and never needs it). Secrets stay in the agent app's `.env`;
+the website's only secret, `REVALIDATE_SECRET`, is server-only and never reaches the browser.
 
 ## 10. Troubleshooting
 
 | Problem | Fix |
 | --- | --- |
-| "Invalid email or password" with the demo logins | Run `npx prisma db seed` in `backend/` (creates the accounts). Use the CRM URL for staff and the website URL for the client. |
-| "This is a client account…" on the CRM login | Clients log in on http://localhost:3001/en/login. |
+| "Invalid email or password" with the demo logins | Run `npx prisma db seed` in `backend/` (creates the accounts) and sign in at http://localhost:3002/login. Old client-portal accounts can no longer sign in. |
 | Website says it can't reach the server | Start the backend first and check `NEXT_PUBLIC_API_URL` in `frontend/.env.local`. Restart `npm run dev` after editing `.env.local`. |
 | `Port 3001/3002 is already in use` | Stop the other process (an older `npm run dev`) or restart the terminal. |
 | `PrismaConfigEnvError` / missing env during install | Make sure `backend/.env` exists (`cp .env.example .env`), then `npm install` again. |

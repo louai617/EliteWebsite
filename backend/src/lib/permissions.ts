@@ -24,7 +24,6 @@ export interface Actor {
 
 export const PERMISSIONS = [
   "crm.access",
-  "portal.access",
   "records.delete",
   "records.reassign",
   "users.manage",
@@ -38,7 +37,6 @@ export const PERMISSIONS = [
   "performance.viewTeam",
   "performance.configure",
   "imports.run",
-  "clients.managePortal",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -56,7 +54,6 @@ const MANAGER_PERMISSIONS: Permission[] = [
   "reports.viewTeam",
   "performance.viewTeam",
   "imports.run",
-  "clients.managePortal",
 ];
 
 /** The role → permission matrix. */
@@ -64,7 +61,8 @@ export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
   ADMIN: new Set<Permission>([...MANAGER_PERMISSIONS, "settings.edit", "performance.configure"]),
   MANAGER: new Set<Permission>(MANAGER_PERMISSIONS),
   AGENT: new Set<Permission>(["crm.access"]),
-  CLIENT: new Set<Permission>(["portal.access"]),
+  /** Retired client-portal accounts: no permissions (they can no longer sign in). */
+  CLIENT: new Set<Permission>(),
 };
 
 export function hasPermission(actor: Actor, permission: Permission) {

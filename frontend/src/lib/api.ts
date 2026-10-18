@@ -2,15 +2,15 @@
  * Central API client for the Elite CRM backend (http://localhost:3002 by default).
  *
  * - Base URL from NEXT_PUBLIC_API_URL (public by design: it is only the API's address).
- * - Authentication is an httpOnly session cookie set by the backend; it is sent with
- *   `credentials: "include"`. No token is ever stored in localStorage.
+ * - The website only calls public endpoints (listings, enquiries, viewing bookings,
+ *   reservations): visitors have no accounts, so no cookies or tokens are sent.
  * - Every response uses the backend envelope { ok: true, data } | { ok: false, error };
  *   failures are thrown as ApiError with a user-safe message and optional field errors.
  * - No database access or secrets live in this app — the backend owns all of that.
  */
 
 export const API_URL = (process.env.NEXT_PUBLIC_API_URL || 'http://localhost:3002/api').replace(/\/$/, '');
-/** Staff CRM (same backend app). Staff who sign in here are sent there. */
+/** The agent app (CRM) — the "Agent portal" button opens its sign-in page. */
 export const CRM_URL = (process.env.NEXT_PUBLIC_CRM_URL || API_URL.replace(/\/api$/, '')).replace(/\/$/, '');
 
 export type ApiErrorCode =
@@ -50,7 +50,7 @@ export async function apiRequest<T>(path: string, { method = 'GET', body, signal
   try {
     response = await fetch(`${API_URL}${path.startsWith('/') ? path : `/${path}`}`, {
       method,
-      credentials: 'include',
+      credentials: 'omit',
       // FormData (file uploads) sets its own multipart Content-Type with the boundary.
       headers: { Accept: 'application/json', ...(body !== undefined && !(body instanceof FormData) ? { 'Content-Type': 'application/json' } : {}) },
       body: body instanceof FormData ? body : body !== undefined ? JSON.stringify(body) : undefined,
@@ -82,9 +82,6 @@ export const api = {
   /** Multipart upload (files). */
   upload: <T>(path: string, form: FormData) => apiRequest<T>(path, { method: 'POST', body: form }),
 };
-
-/** Opens a document the signed-in user may see (served by the agent app). */
-export const documentUrl = (id: string, download = false) => `${API_URL}/documents/${id}${download ? '?download=1' : ''}`;
 
 /** First message of an error, for forms. */
 export function errorMessage(error: unknown, fallback = 'Something went wrong. Please try again.') {

@@ -682,42 +682,30 @@ async function main() {
     });
   }
 
-  // ─── Client portal account (client@elite.qa) ───
-  const portalClient = clients[0];
-  await db.user.create({
-    data: {
-      name: portalClient.fullName,
-      email: "client@elite.qa",
-      phone: portalClient.phone,
-      role: "CLIENT",
-      clientId: portalClient.id,
-      passwordHash: await bcrypt.hash("Client@2026", 12),
-      createdAt: daysAgo(30),
-    },
-  });
-  const shortlist = properties.filter((p) => p.status === "AVAILABLE" && p.purpose === (["TENANT", "LANDLORD"].includes(portalClient.clientType) ? "RENT" : "SALE")).slice(0, 3);
+  // ─── A client with a shortlist, an upcoming viewing and a follow-up ───
+  const featuredClient = clients[0];
+  const shortlist = properties.filter((p) => p.status === "AVAILABLE" && p.purpose === (["TENANT", "LANDLORD"].includes(featuredClient.clientType) ? "RENT" : "SALE")).slice(0, 3);
   for (const property of shortlist) {
-    await db.propertyInterest.create({ data: { propertyId: property.id, clientId: portalClient.id, createdAt: daysAgo(int(3, 15)) } }).catch(() => undefined);
+    await db.propertyInterest.create({ data: { propertyId: property.id, clientId: featuredClient.id, createdAt: daysAgo(int(3, 15)) } }).catch(() => undefined);
   }
   if (shortlist[0]) {
     const startsAt = daysFromNow(2, 17);
     await db.viewing.create({
-      data: { propertyId: shortlist[0].id, clientId: portalClient.id, agentId: portalClient.agentId, startsAt, endsAt: new Date(startsAt.getTime() + 45 * 60_000), status: "CONFIRMED", createdAt: daysAgo(1) },
+      data: { propertyId: shortlist[0].id, clientId: featuredClient.id, agentId: featuredClient.agentId, startsAt, endsAt: new Date(startsAt.getTime() + 45 * 60_000), status: "CONFIRMED", createdAt: daysAgo(1) },
     });
   }
   await db.task.create({
     data: {
-      title: "Send a copy of your QID and passport",
-      description: "Needed to prepare the tenancy contract. You can send them to your agent on WhatsApp.",
+      title: `Collect QID and passport from ${featuredClient.fullName}`,
+      description: "Needed to prepare the tenancy contract. Upload them to the client's Documents.",
       type: "CLIENT_FOLLOW_UP",
       priority: "HIGH",
       dueDate: daysFromNow(3, 12),
-      clientId: portalClient.id,
-      assigneeId: portalClient.agentId,
-      createdById: portalClient.agentId,
-      assignedById: portalClient.agentId,
-      clientVisible: true,
-      events: { create: { type: "CREATED", actorId: portalClient.agentId, toValue: "TODO" } },
+      clientId: featuredClient.id,
+      assigneeId: featuredClient.agentId,
+      createdById: featuredClient.agentId,
+      assignedById: featuredClient.agentId,
+      events: { create: { type: "CREATED", actorId: featuredClient.agentId, toValue: "TODO" } },
     },
   });
 
@@ -870,7 +858,7 @@ async function main() {
   // Freeze the history into daily reports with the app's own rollover code (scores, breakdowns).
   console.log("Finalizing daily reports for the last 21 days…");
   execSync("npm run --silent reports:backfill -- 21", { stdio: "inherit" });
-  console.log("Done. Log in with admin@elite.qa / Admin@2026, client portal: client@elite.qa / Client@2026 (see README).");
+  console.log("Done. Log in with admin@elite.qa / Admin@2026 (see README).");
 }
 
 main()

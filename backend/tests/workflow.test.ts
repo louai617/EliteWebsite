@@ -5,26 +5,25 @@
  *    proof and opens a "Pending contract" deal, the 24-hour rule, bulk reassignment
  *  - deals: Pending contract → Closed (lead becomes a client) / Cancelled
  *  - contract templates and generation
- *  - documents (access rules) and website reservations paid by Fawran
+ *  - documents (access rules) and website reservations paid by Fawran (no visitor accounts)
  *   npm test   (uses a throwaway ./test.db, never the dev database)
  */
 import "dotenv/config";
 import { db } from "@/lib/db";
 import { toPublicError } from "@/lib/errors";
-import { verifyPassword } from "@/lib/auth/password";
+import { hashPassword, verifyPassword } from "@/lib/auth/password";
 import { leadSchema, markLostSchema } from "@/schemas/lead";
 import { propertySchema } from "@/schemas/property";
 import { contractTemplateSchema } from "@/schemas/contract";
 import { paymentSettingsSchema } from "@/schemas/settings";
-import { registerClientSchema } from "@/schemas/portal";
+import { guestReservationSchema } from "@/schemas/website";
 import { createProperty } from "@/services/properties";
 import { bulkReassignLeads, createLead, decideViewingPass, markLeadLost, markLeadWon, reassignStaleLeads, requestViewingPass, setLeadStatus } from "@/services/leads";
 import { setDealStatus } from "@/services/deals";
 import { generateContract, listTemplates } from "@/services/contracts";
-import { deleteDocument, openDocument, portalDocuments, portalUploadDocument, uploadDocument } from "@/services/documents";
-import { registerClientAccount } from "@/services/client-accounts";
+import { deleteDocument, openDocument, uploadDocument } from "@/services/documents";
 import { requestPasswordReset, resetPassword, verifyResetCode } from "@/services/password-reset";
-import { cancelReservation, confirmReservation, createReservation, expireUnpaidReservations, listClientReservations, reservationQuote } from "@/services/reservations";
+import { cancelByLink, cancelReservation, confirmReservation, createGuestReservation, expireUnpaidReservations, reservationByLink, reservationQuote, updatePaymentDetails, uploadReceipt } from "@/services/reservations";
 import { testMailbox } from "@/services/mail";
 import { passwordResetCode } from "@/services/email-templates";
 import { deleteDocumentFile } from "@/services/storage";
@@ -51,8 +50,8 @@ async function rejects(name: string, fn: () => Promise<unknown>, match?: RegExp)
 
 const ORIGIN = "http://api.test";
 const actorFor = async (email: string) => {
-  const u = await db.user.findUniqueOrThrow({ where: { email }, select: { id: true, role: true, clientId: true } });
-  return u as { id: string; role: Role; clientId: string | null };
+  const u = await db.user.findUniqueOrThrow({ where: { email }, select: { id: true, role: true } });
+  return u as { id: string; role: Role };
 };
 const pdf = (name = "form.pdf") => new File([Buffer.from("%PDF-1.4\n% test document\n%%EOF\n")], name, { type: "application/pdf" });
 const created: string[] = [];
@@ -65,40 +64,39 @@ async function main() {
   const aisha = await actorFor("aisha@elite.qa");
 
   // ── Password reset by e-mail code ──
-  const reg = await registerClientAccount(registerClientSchema.parse({ name: "Otp Client", email: "otp.client@example.com", phone: "+974 5000 7777", password: "OtpClient2026" }));
-  check("welcome e-mail on registration", lastMail("otp.client@example.com")?.template === "welcome");
-  await requestPasswordReset("otp.client@example.com");
-  const mail = lastMail("otp.client@example.com");
+  const reg = await db.user.create({ data: { name: "Otp Agent", email: "otp.agent@example.com", role: "AGENT", passwordHash: await hashPassword("OtpAgent2026") }, select: { id: true } });
+  await requestPasswordReset("otp.agent@example.com");
+  const mail = lastMail("otp.agent@example.com");
   const code = mail?.email.subject.match(/^(\d{6})\b/)?.[1] ?? "";
   check("reset e-mail carries a 6-digit code", mail?.template === "password-reset-code" && /^\d{6}$/.test(code), mail?.email.subject);
   check("the code is in the branded HTML with the logo", Boolean(mail?.email.html.includes(code.split("").join("&nbsp;")) && mail?.email.html.includes("cid:logo@elite")));
   const stored = await db.otpCode.findFirstOrThrow({ where: { userId: reg.id } });
   check("only a hash of the code is stored", stored.codeHash !== code && !stored.codeHash.includes(code));
-  await requestPasswordReset("otp.client@example.com");
+  await requestPasswordReset("otp.agent@example.com");
   check("a second request within a minute sends nothing", (await db.otpCode.count({ where: { userId: reg.id } })) === 1);
   await requestPasswordReset("nobody.here@example.com");
   check("unknown e-mail: no code, same response", (await db.otpCode.count({ where: { user: { email: "nobody.here@example.com" } } })) === 0);
   const wrong = code === "000000" ? "111111" : "000000";
-  await rejects("wrong code is rejected with attempts left", () => verifyResetCode("otp.client@example.com", wrong), /4 attempts left/);
+  await rejects("wrong code is rejected with attempts left", () => verifyResetCode("otp.agent@example.com", wrong), /4 attempts left/);
   await rejects("code for another e-mail is rejected", () => verifyResetCode("omar@elite.qa", code), /isn't right/);
-  const { resetToken } = await verifyResetCode("otp.client@example.com", code);
+  const { resetToken } = await verifyResetCode("otp.agent@example.com", code);
   check("correct code returns a reset token", resetToken.length > 30);
-  await rejects("a verified code can't be reused", () => verifyResetCode("otp.client@example.com", code), /isn't right|expired/);
+  await rejects("a verified code can't be reused", () => verifyResetCode("otp.agent@example.com", code), /isn't right|expired/);
   await db.session.create({ data: { userId: reg.id, tokenHash: "test-session-hash", expiresAt: new Date(Date.now() + 3_600_000) } });
   await rejects("token is bound to the e-mail", () => resetPassword("someone.else@example.com", resetToken, "NewSecret2026"), /expired/);
-  await resetPassword("otp.client@example.com", resetToken, "NewSecret2026");
+  await resetPassword("otp.agent@example.com", resetToken, "NewSecret2026");
   const after = await db.user.findUniqueOrThrow({ where: { id: reg.id } });
   check("new password works", await verifyPassword("NewSecret2026", after.passwordHash));
   check("all sessions are signed out", (await db.session.count({ where: { userId: reg.id } })) === 0);
-  check("password-changed e-mail sent", lastMail("otp.client@example.com")?.template === "password-changed");
-  await rejects("reset token is single-use", () => resetPassword("otp.client@example.com", resetToken, "Another2026x"), /expired/);
+  check("password-changed e-mail sent", lastMail("otp.agent@example.com")?.template === "password-changed");
+  await rejects("reset token is single-use", () => resetPassword("otp.agent@example.com", resetToken, "Another2026x"), /expired/);
   // Lockout after 5 wrong codes
   await db.otpCode.updateMany({ where: { userId: reg.id }, data: { createdAt: new Date(Date.now() - 120_000) } });
-  await requestPasswordReset("otp.client@example.com");
-  for (let i = 0; i < 5; i++) await verifyResetCode("otp.client@example.com", "999999").catch(() => undefined);
-  const fresh = lastMail("otp.client@example.com")?.email.subject.match(/^(\d{6})/)?.[1] ?? "";
-  await rejects("5 wrong tries lock the code", () => verifyResetCode("otp.client@example.com", fresh === "999999" ? "999998" : fresh), /isn't right|expired|request a new code/i);
-  check("e-mail templates escape user input", !passwordResetCode({ name: "<script>x</script>", code: "123456", minutes: 10, portal: "client" }).html.includes("<script>x"));
+  await requestPasswordReset("otp.agent@example.com");
+  for (let i = 0; i < 5; i++) await verifyResetCode("otp.agent@example.com", "999999").catch(() => undefined);
+  const fresh = lastMail("otp.agent@example.com")?.email.subject.match(/^(\d{6})/)?.[1] ?? "";
+  await rejects("5 wrong tries lock the code", () => verifyResetCode("otp.agent@example.com", fresh === "999999" ? "999998" : fresh), /isn't right|expired|request a new code/i);
+  check("e-mail templates escape user input", !passwordResetCode({ name: "<script>x</script>", code: "123456", minutes: 10 }).html.includes("<script>x"));
 
   // ── Lead rules ──
   const owner = await db.owner.findFirstOrThrow({ select: { id: true } });
@@ -139,8 +137,8 @@ async function main() {
   created.push(form.id);
   await setLeadStatus(omar, lead2.id, "NEGOTIATION");
   check("a viewing form lets the lead move on", (await db.lead.findUniqueOrThrow({ where: { id: lead2.id } })).status === "NEGOTIATION");
-  check("other agents can't open the document", (await openDocument({ ...aisha, clientId: null }, form.id)) === null);
-  check("the lead's agent can open it", Boolean(await openDocument({ ...omar, clientId: null }, form.id)));
+  check("other agents can't open the document", (await openDocument(aisha, form.id)) === null);
+  check("the lead's agent can open it", Boolean(await openDocument(omar, form.id)));
   await rejects("only managers delete documents", () => deleteDocument(omar, form.id), /managers/i);
 
   // Lost with a reason
@@ -229,42 +227,66 @@ async function main() {
   check("bulk reassign moves the agent's New leads", bulk.moved >= 1 && (await db.lead.findUniqueOrThrow({ where: { id: fresh1.id } })).agentId === aisha.id);
   check("bulk reassign leaves progressed leads when 'only New'", (await db.lead.findUniqueOrThrow({ where: { id: progressed.id } })).agentId === omar.id);
 
-  // ── Reservations (Fawran) ──
-  const client = await actorFor("client@elite.qa");
+  // ── Reservations (Fawran) from the website, no visitor account ──
   const live = await createProperty(omar, propertySchema.parse({ title: "Reservation test flat", type: "APARTMENT", purpose: "SALE", status: "AVAILABLE", price: "1500000", currency: "QAR", country: "Qatar", city: "Doha", area: "The Pearl", bedrooms: "2", ownerId: owner.id, agentId: null, websitePublished: true }));
   check("payment settings need an IBAN or Fawran alias", !paymentSettingsSchema.safeParse({ fawranEnabled: true, saleDepositPercent: 5, rentDepositMonths: 1, reservationHoldHours: 48 }).success);
-  const quote = await reservationQuote(client, live.reference);
+  const quote = await reservationQuote(live.reference);
   check("deposit is 5% of the price", quote.amount === 75000, quote.amount);
   check("card gateway is shown as coming soon", quote.methods.some((m) => m.method === "CARD" && !m.enabled && m.comingSoon));
-  await rejects("card payments are not available yet", () => createReservation(client, { property: live.reference, method: "CARD", note: null }, ORIGIN), /coming soon/i);
-  const r = await createReservation(client, { property: live.reference, method: "FAWRAN", note: "Will pay today" }, ORIGIN);
-  check("reservation awaits payment", r.status === "AWAITING_PAYMENT" && /^RS-\d{4}$/.test(r.reference));
-  const resMail = lastMail("client@elite.qa");
-  check("reservation e-mail has the bank details and reference", resMail?.template === "reservation-created" && resMail.email.html.includes("QA00DEMO") && resMail.email.html.includes(r.reference));
-  await rejects("one active reservation per home", () => createReservation(client, { property: live.reference, method: "FAWRAN", note: null }, ORIGIN), /already have/i);
-  const other = await registerClientAccount(registerClientSchema.parse({ name: "Other Buyer", email: "other.buyer@example.com", phone: "+974 5000 8888", password: "OtherBuyer2026" }));
-  await rejects("other clients can't attach proofs to it", () => portalUploadDocument(other, { kind: "PROOF_OF_PAYMENT", title: null, number: null, expiresAt: null, reservationId: r.id, file: pdf() }), /not found/i);
-  const proof = await portalUploadDocument(client, { kind: "PROOF_OF_PAYMENT", title: null, number: null, expiresAt: null, reservationId: r.id, file: pdf("fawran.pdf") });
-  created.push(proof.id);
-  check("uploading the receipt submits the payment", (await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).status === "PAYMENT_SUBMITTED");
-  check("agent gets an urgent 'verify payment' task", Boolean(await db.task.findFirst({ where: { autoKey: `verify-payment:${r.id}`, priority: "URGENT" } })));
-  check("client sees the receipt on their file", (await portalDocuments(client)).some((d) => d.id === proof.id));
-  check("client can open their own receipt", Boolean(await openDocument(client, proof.id)));
-  check("other clients can't open it", (await openDocument(other, proof.id)) === null);
-  await rejects("other agents can't confirm it", () => confirmReservation(aisha, r.id), /not found/i);
-  await confirmReservation(omar, r.id);
-  check("confirming reserves the home", (await db.property.findUniqueOrThrow({ where: { id: live.id } })).status === "RESERVED" && (await db.reservation.findUniqueOrThrow({ where: { id: r.id } })).status === "CONFIRMED");
-  check("client is e-mailed the confirmation", lastMail("client@elite.qa")?.template === "reservation-confirmed");
-  await rejects("a reserved home can't be reserved by someone else", () => createReservation(other, { property: live.reference, method: "FAWRAN", note: null }, ORIGIN), /already reserved/i);
-  await rejects("agents can't cancel a confirmed reservation", () => cancelReservation(omar, r.id, "Changed plans"), /managers/i);
-  await cancelReservation(manager, r.id, "Client asked for a refund");
+  const visitor = (over: Record<string, unknown> = {}) =>
+    guestReservationSchema.parse({ property: live.reference, method: "FAWRAN", name: "Res Visitor", phone: "+974 5000 9999", email: "res.visitor@example.com", note: "Will pay today", ...over });
+  check("reserving needs name, phone and e-mail", !guestReservationSchema.safeParse({ property: live.reference, method: "FAWRAN" }).success);
+  await rejects("card payments are not available yet", () => createGuestReservation(visitor({ method: "CARD" })), /coming soon/i);
+  const leadsBefore = await db.lead.count();
+  const r = await createGuestReservation(visitor());
+  const row = await db.reservation.findUniqueOrThrow({ where: { reference: r.reference }, include: { lead: true } });
+  check("reservation awaits payment with an RS reference", row.status === "AWAITING_PAYMENT" && /^RS-\d{4}$/.test(r.reference));
+  check("visitor becomes a WEBSITE lead for the listing agent (no CRM client)", row.lead?.source === "WEBSITE" && row.lead.agentId === omar.id && row.clientId === null && (await db.lead.count()) === leadsBefore + 1);
+  check("only a hash of the link token is stored", r.token.length >= 40 && row.accessTokenHash !== r.token && !row.accessTokenHash?.includes(r.token));
+  await new Promise((res) => setTimeout(res, 50));
+  const resMail = lastMail("res.visitor@example.com");
+  check("reservation e-mail has the bank details, reference and private link", resMail?.template === "reservation-created" && resMail.email.html.includes("QA00DEMO") && resMail.email.html.includes(r.reference) && resMail.email.html.includes(`/reservation/${r.token}`));
+  check("agent gets a 'new reservation' task on the lead", Boolean(await db.task.findFirst({ where: { autoKey: `reservation:${row.id}`, assigneeId: omar.id, leadId: row.leadId } })));
+  const page = await reservationByLink(r.token, ORIGIN);
+  check("the private link shows the reservation and bank details", page.reference === r.reference && page.canUpload && page.bank.iban === "QA00DEMO000000000000000000000");
+  check("the private link never exposes internal fields", !/leadId|clientId|agentId|accessTokenHash|contactPhone/.test(JSON.stringify(page)));
+  await rejects("a wrong link finds nothing", () => reservationByLink("x".repeat(43), ORIGIN), /not found/i);
+  await rejects("same visitor, same home: no second reservation", () => createGuestReservation(visitor({ phone: "00974 5000 9999", email: "someone.else@example.com" })), /already have a reservation/i);
+  await new Promise((res) => setTimeout(res, 50));
+  check("the link is re-sent to the original e-mail, not the new one", lastMail("res.visitor@example.com")?.template === "reservation-link" && !lastMail("someone.else@example.com"));
+  await rejects("the old link stops working after a re-send", () => reservationByLink(r.token, ORIGIN), /not found/i);
+  const resent = lastMail("res.visitor@example.com")?.email.html.match(/\/reservation\/([A-Za-z0-9_-]{40,64})/)?.[1] ?? "";
+  check("the re-sent link works", Boolean(resent) && (await reservationByLink(resent, ORIGIN)).reference === r.reference);
+  await updatePaymentDetails(resent, { payerName: "Res Visitor", paymentReference: "FWR-123" });
+  await rejects("receipts must be PDF or images", () => uploadReceipt(resent, new File(["hello"], "x.txt", { type: "text/plain" })), /PDF or a photo/);
+  await uploadReceipt(resent, pdf("fawran.pdf"));
+  const receipt = await db.document.findFirstOrThrow({ where: { reservationId: row.id, kind: "PROOF_OF_PAYMENT" } });
+  created.push(receipt.id);
+  check("uploading the receipt submits the payment", (await db.reservation.findUniqueOrThrow({ where: { id: row.id } })).status === "PAYMENT_SUBMITTED");
+  check("the receipt is on the lead's file too", receipt.leadId === row.leadId && receipt.uploadedByClient);
+  check("agent gets an urgent 'verify payment' task", Boolean(await db.task.findFirst({ where: { autoKey: `verify-payment:${row.id}`, priority: "URGENT", leadId: row.leadId } })));
+  check("the listing agent can open the receipt", Boolean(await openDocument(omar, receipt.id)));
+  check("other agents can't open it", (await openDocument(aisha, receipt.id)) === null);
+  check("the private page lists receipts by file name only", (await reservationByLink(resent, ORIGIN)).receipts.every((x) => Object.keys(x).sort().join() === "fileName,uploadedAt"));
+  await rejects("other agents can't confirm it", () => confirmReservation(aisha, row.id), /not found/i);
+  await confirmReservation(omar, row.id);
+  check("confirming reserves the home", (await db.property.findUniqueOrThrow({ where: { id: live.id } })).status === "RESERVED" && (await db.reservation.findUniqueOrThrow({ where: { id: row.id } })).status === "CONFIRMED");
+  await new Promise((res) => setTimeout(res, 50));
+  check("visitor is e-mailed the confirmation", lastMail("res.visitor@example.com")?.template === "reservation-confirmed");
+  await rejects("visitors can't cancel a confirmed reservation", () => cancelByLink(resent, null), /agent/i);
+  await rejects("a reserved home can't be reserved by someone else", () => createGuestReservation(visitor({ name: "Other Buyer", phone: "+974 5000 8888", email: "other.buyer@example.com" })), /already reserved/i);
+  await rejects("agents can't cancel a confirmed reservation", () => cancelReservation(omar, row.id, "Changed plans"), /managers/i);
+  await cancelReservation(manager, row.id, "Client asked for a refund");
   check("cancelling releases the home", (await db.property.findUniqueOrThrow({ where: { id: live.id } })).status === "AVAILABLE");
-  const listed = await listClientReservations(client, ORIGIN);
-  check("client sees the cancelled reservation with the reason", listed.items.some((x) => x.id === r.id && x.status === "CANCELLED" && x.cancelReason?.includes("refund")));
-  // Unpaid reservations expire
-  const r2 = await createReservation(other, { property: live.reference, method: "FAWRAN", note: null }, ORIGIN);
-  await db.reservation.update({ where: { id: r2.id }, data: { payBy: new Date(Date.now() - 60_000) } });
-  check("unpaid reservations are released after the hold time", (await expireUnpaidReservations()) >= 1 && (await db.reservation.findUniqueOrThrow({ where: { id: r2.id } })).status === "CANCELLED");
+  const afterCancel = await reservationByLink(resent, ORIGIN);
+  check("visitor sees the cancelled reservation with the reason", afterCancel.status === "CANCELLED" && afterCancel.cancelReason?.includes("refund") && !afterCancel.canUpload);
+  // Visitor cancels / unpaid reservations expire
+  const r2 = await createGuestReservation(visitor({ name: "Other Buyer", phone: "+974 5000 8888", email: "other.buyer@example.com" }));
+  await cancelByLink(r2.token, "Found another flat");
+  check("visitors can cancel before paying", (await db.reservation.findUniqueOrThrow({ where: { reference: r2.reference } })).status === "CANCELLED");
+  const r3 = await createGuestReservation(visitor({ name: "Third Buyer", phone: "+974 5000 6666", email: "third.buyer@example.com" }));
+  await db.reservation.update({ where: { reference: r3.reference }, data: { payBy: new Date(Date.now() - 60_000) } });
+  check("unpaid reservations are released after the hold time", (await expireUnpaidReservations()) >= 1 && (await db.reservation.findUniqueOrThrow({ where: { reference: r3.reference } })).status === "CANCELLED");
 
   // Clean up the files this test wrote (rows go with the throwaway database).
   for (const id of created) {

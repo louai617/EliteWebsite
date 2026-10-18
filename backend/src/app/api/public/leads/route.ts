@@ -1,6 +1,6 @@
 import { apiRoute } from "@/lib/api/handler";
-import { publicLeadSchema } from "@/schemas/portal";
-import { createPublicLead } from "@/services/portal";
+import { publicLeadSchema } from "@/schemas/website";
+import { createPublicLead } from "@/services/website-leads";
 
 /**
  * POST /api/public/leads — website contact/enquiry form (no account needed).

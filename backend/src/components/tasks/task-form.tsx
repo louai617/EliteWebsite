@@ -16,7 +16,7 @@ import { Form } from "@/components/ui/form";
 import { SheetBody, SheetFooter } from "@/components/ui/sheet";
 import { FormSheet } from "@/components/shared/form-sheet";
 import { AgentField } from "@/components/shared/form/agent-field";
-import { CheckboxField, EntityField, SelectField, TextField, TextareaField } from "@/components/shared/form/fields";
+import { EntityField, SelectField, TextField, TextareaField } from "@/components/shared/form/fields";
 
 type TaskValues = z.output<typeof taskSchema>;
 
@@ -99,7 +99,6 @@ function TaskForm({ task, prefill, agents, viewer, onSaved }: { task?: TaskRecor
           <EntityField control={form.control} name="clientId" label="Client" kind="client" initialOption={task?.client ? { id: task.client.id, label: task.client.fullName } : prefill?.clientOption} />
           <EntityField control={form.control} name="propertyId" label="Property" kind="property" initialOption={task?.property ? { id: task.property.id, label: task.property.reference } : prefill?.propertyOption} />
           <EntityField control={form.control} name="dealId" label="Deal" kind="deal" initialOption={task?.deal ? { id: task.deal.id, label: task.deal.reference } : prefill?.dealOption} />
-          <CheckboxField control={form.control} name="clientVisible" label="Show to the client in the client portal" className="sm:col-span-2" />
         </SheetBody>
         <SheetFooter>
           <Button type="submit" loading={form.formState.isSubmitting}>

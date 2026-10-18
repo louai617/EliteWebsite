@@ -228,20 +228,20 @@ export async function setViewingStatus(actor: Actor, id: string, status: Viewing
   return result;
 }
 
-/** Tells the client (by e-mail) that the agent confirmed their viewing. */
+/** Tells the client / website visitor (by e-mail) that the agent confirmed their viewing. */
 async function emailViewingConfirmed(id: string) {
   const v = await db.viewing.findUnique({
     where: { id },
     select: {
       startsAt: true,
-      client: { select: { fullName: true, email: true, portalUser: { select: { email: true } } } },
+      client: { select: { fullName: true, email: true } },
       lead: { select: { fullName: true, email: true } },
       agent: { select: { name: true, phone: true } },
       property: { select: { reference: true, title: true, buildingName: true, street: true, area: true, city: true } },
     },
   });
   const person = v?.client ?? v?.lead;
-  const to = v?.client?.portalUser?.email ?? person?.email;
+  const to = person?.email;
   if (!v || !person || !to) return;
   const p = v.property;
   queueMail(
@@ -251,7 +251,7 @@ async function emailViewingConfirmed(id: string) {
       name: person.fullName, property: p.title, reference: p.reference, when: formatDateTime(v.startsAt),
       address: [p.buildingName, p.street, p.area, p.city].filter(Boolean).join(", "),
       agent: v.agent ? `${v.agent.name}${v.agent.phone ? ` (${v.agent.phone})` : ""}` : null,
-      manageUrl: `${CLIENT_APP_URL}/en/dashboard/bookings`, confirmed: true,
+      listingUrl: `${CLIENT_APP_URL}/en/properties/${encodeURIComponent(p.reference)}`, confirmed: true,
     }),
   );
 }

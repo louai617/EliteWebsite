@@ -7,8 +7,6 @@ import { routing } from '@/i18n/routing';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import ChatbotWidget from '@/components/chatbot/ChatbotWidget';
-import { AuthProvider } from '@/lib/AuthContext';
-import { SavedHomesProvider } from '@/lib/SavedHomesContext';
 
 const workSans = Work_Sans({ 
   subsets: ["latin"],
@@ -79,18 +77,14 @@ export default async function RootLayout({
     <html lang={locale} dir={isRtl ? 'rtl' : 'ltr'} data-scroll-behavior="smooth">
       <body className={`${workSans.variable} ${cairo.variable} font-sans`}>
         <NextIntlClientProvider messages={messages} locale={locale}>
-          <AuthProvider>
-            <SavedHomesProvider>
-            <div className="flex flex-col min-h-screen">
-              <Navbar />
-              <div className="flex-grow">
-                {children}
-              </div>
-              <Footer />
-              <ChatbotWidget />
+          <div className="flex flex-col min-h-screen">
+            <Navbar />
+            <div className="flex-grow">
+              {children}
             </div>
-            </SavedHomesProvider>
-          </AuthProvider>
+            <Footer />
+            <ChatbotWidget />
+          </div>
         </NextIntlClientProvider>
       </body>
     </html>

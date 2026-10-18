@@ -50,8 +50,8 @@ export function PaymentDetails({ reference, amount, bank }: { reference: string;
   );
 }
 
-/** Upload the Fawran / transfer receipt for a reservation. */
-export function ReceiptUpload({ reservationId, onDone }: { reservationId: string; onDone?: () => void }) {
+/** Upload the Fawran / transfer receipt from the private reservation page. */
+export function ReceiptUpload({ token, onDone }: { token: string; onDone?: () => void }) {
   const t = useTranslations('reserve');
   const ref = useRef<HTMLInputElement>(null);
   const [busy, setBusy] = useState(false);
@@ -60,11 +60,9 @@ export function ReceiptUpload({ reservationId, onDone }: { reservationId: string
     setBusy(true);
     setMessage(null);
     const form = new FormData();
-    form.set('kind', 'PROOF_OF_PAYMENT');
-    form.set('reservationId', reservationId);
     form.set('file', file);
     try {
-      await api.upload('/portal/documents', form);
+      await api.upload(`/public/reservations/${encodeURIComponent(token)}/receipt`, form);
       setMessage({ ok: true, text: t('receipt_uploaded') });
       onDone?.();
     } catch (err) {

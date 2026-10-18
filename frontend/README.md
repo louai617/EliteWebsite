@@ -1,4 +1,4 @@
-# ELITE Real Estate — website & client portal
+# ELITE Real Estate — website
 
 Next.js 16 (App Router) · next-intl (English / Arabic) · Tailwind CSS · React Hook Form + Zod.
 Runs on **http://localhost:3001** and talks to the CRM backend's REST API
@@ -15,21 +15,25 @@ npm run dev                    # http://localhost:3001  (start the backend first
 | Variable | Default | Purpose |
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:3002/api` | Backend REST API |
-| `NEXT_PUBLIC_CRM_URL` | API origin | Staff CRM (staff are redirected there after login) |
+| `NEXT_PUBLIC_CRM_URL` | API origin | Agent app; the **Agent portal** button opens its `/login` |
 | `NEXT_PUBLIC_SITE_URL` | `http://localhost:3001` | Canonical URL for SEO metadata |
-| `NEXT_PUBLIC_BUSINESS_TIMEZONE` | `Asia/Qatar` | Time zone for dates in the portal |
+| `NEXT_PUBLIC_BUSINESS_TIMEZONE` | `Asia/Qatar` | Time zone for viewing times and payment deadlines |
 | `REVALIDATE_SECRET` | — | Server-only. Same value as the agent app's `WEBSITE_REVALIDATE_SECRET`; lets it refresh listings instantly |
 | `API_INTERNAL_URL` | `NEXT_PUBLIC_API_URL` | Server-only. Where the server fetches listings from (e.g. an internal address) |
 
 ## How it connects
 
-- `src/lib/api.ts` — the single API client: `fetch` with `credentials: "include"` (the
-  backend's httpOnly session cookie), typed responses (`src/lib/api-types.ts`) and an
-  `ApiError` carrying the backend's message and field errors. No tokens in localStorage.
-- `src/lib/AuthContext.tsx` — session state from `GET /auth/me`; login / register / logout.
-  Roles shown here only drive navigation — the backend enforces every permission.
+The website has **no visitor accounts** (no sign-up, login or client dashboard). The
+**Agent portal** button in the header opens the agent app's sign-in page, where agents and staff
+use their CRM accounts.
+
+- `src/lib/api.ts` — the single API client for the public endpoints: `fetch` without cookies
+  (`credentials: "omit"`), typed responses (`src/lib/api-types.ts`) and an `ApiError` carrying
+  the backend's message and field errors.
 - Website forms (property enquiry, chat assistant) post to `POST /public/leads`, which
-  creates a lead and a response task in the CRM. "Forgot password" opens a task for the team.
+  creates a lead and a response task in the CRM.
+- Old links redirect (`src/proxy.ts`): `/login` and `/forgot-password` → the agent app,
+  `/dashboard/saved` → `/saved`, `/register` and `/dashboard/*` → the home page.
 
 ## Listings come from the agent app
 
@@ -42,29 +46,20 @@ npm run dev                    # http://localhost:3001  (start the backend first
 - If the agent app is unreachable the pages show a friendly error/empty state instead of
   crashing, and recover on the next request.
 
-## Client dashboard (`/[locale]/dashboard`)
+## Booking, reserving and saving — no account needed
 
-- **Overview** — journey tracker (Joined → Enquiry → Viewing booked → Viewed → Offer →
-  Contract → Keys, from real CRM records), next viewing with countdown, assigned agent,
-  price-drop alert, "Homes for you" preview, counters.
-- **Bookings** — `BookViewing` on every property page picks a free 45-minute slot (agent and
-  client calendars checked). Upcoming bookings show status (awaiting confirmation / confirmed),
-  agent call and WhatsApp, directions, `.ics` add-to-calendar, reschedule and cancel.
-- **Saved homes** — the ♥ on cards and property pages (`SavedHomesContext`); price change
-  since saving, "no longer available" flag, side-by-side compare of up to 3.
-- **For you / Preferences** — purpose, types, areas, bedrooms, budget → scored matches with
-  reasons; the agent sees the same preferences in the CRM.
-- **Reservations** — "Reserve this home" on available listings: deposit, Fawran / bank transfer
-  (card payments shown as "coming soon"), bank details with copy buttons, receipt upload. The
-  Bookings page tracks Reserved → Deposit paid → Confirmed.
-- **Documents** — the client uploads QID / passport / receipts (PDF or photo) and sees contracts
-  and receipts from their agent; files open from the agent app after a permission check.
-- **Forgot password** — e-mail → 6-digit code → new password (`/[locale]/forgot-password`).
-
-### Other portal pages
-
-For CLIENT accounts (self-registered on `/register`, or created by a manager from the client's
-page in the CRM). Alongside the pages above: **Enquiries** (status + new request), **Tasks** shared by
-the agent, **Reports** (viewings and deals), **Activity**, **My data** (JSON export) and
-**Account** (contact details, password). Every request is scoped by the backend to the signed-in
-client. The old static `/dashboard/admin` pages now redirect to the CRM.
+- **Book a viewing** (`BookViewing` on every property page) — pick a free 45-minute slot (the
+  agent's calendar is checked) and leave name, mobile and e-mail. `POST /public/viewings`
+  creates a viewing on a WEBSITE lead for the listing's agent with a "confirm" task; the
+  visitor gets an e-mail now and another when the agent confirms, plus an `.ics` file and
+  directions on screen.
+- **Reserve this home** (`ReserveHome`) — deposit, Fawran / bank transfer (card shown as
+  "coming soon") and the visitor's details. `POST /public/reservations` returns a private link
+  token; the visitor is taken to **`/[locale]/reservation/[token]`** (also e-mailed), which
+  shows the status, bank details with copy buttons, the payer details and the **receipt upload**,
+  and lets them cancel before paying. The page is `noindex` and sends no referrer, so the link
+  isn't leaked. Agents confirm the payment in the CRM's Reservations page.
+- **Saved homes** — the ♥ on cards and property pages stores the listing in the visitor's own
+  browser (`src/lib/saved-homes.ts`, localStorage, synced across tabs). **`/[locale]/saved`**
+  lists them (via `GET /public/properties?refs=…`), flags homes no longer available and compares
+  up to 3 side by side. Nothing is sent to the server.

@@ -1,6 +1,6 @@
 /**
  * Tests for the CRM operations features: property hierarchy, imports, task tracker,
- * daily tasks/reports and the 24h rollover, scoring, permissions and client isolation.
+ * daily tasks/reports and the 24h rollover, scoring, permissions and retired client accounts.
  * Runs against the throwaway ./test.db (see tests/run.mjs), after services.test.ts.
  */
 import "dotenv/config";
@@ -14,7 +14,7 @@ import { propertySchema } from "@/schemas/property";
 import { taskSchema } from "@/schemas/task";
 import { dailyTemplateSchema } from "@/schemas/daily";
 import { workActivitySchema } from "@/schemas/work-activity";
-import { registerClientSchema, publicLeadSchema } from "@/schemas/portal";
+import { publicLeadSchema } from "@/schemas/website";
 import { createProperty, listProperties } from "@/services/properties";
 import { addTaskNote, createTask, getTask, listTasks, reassignTask, setTaskStatus, teamWorkload } from "@/services/tasks";
 import { logWorkActivity } from "@/services/work-activities";
@@ -22,9 +22,10 @@ import { createDailyTemplate, finalizeDay, getDailyReport, reportRows, runDailyR
 import { getScoringRules, resetScoringRules, updateScoringRules } from "@/services/scoring";
 import { agentPerformance, performanceBoard } from "@/services/performance";
 import { runImport } from "@/services/imports";
-import { registerClientAccount } from "@/services/client-accounts";
+import { authenticate } from "@/services/auth";
+import { hashPassword } from "@/lib/auth/password";
 import { requestPasswordReset } from "@/services/password-reset";
-import { createPublicLead, portalLeads, portalOverview, portalProperties, portalTasks } from "@/services/portal";
+import { createPublicLead } from "@/services/website-leads";
 import { assignLead } from "@/services/leads";
 import type { Role } from "@/generated/prisma/enums";
 
@@ -60,7 +61,12 @@ async function main() {
   const manager = await actorFor("fatima@elite.qa");
   const omar = await actorFor("omar@elite.qa");
   const aisha = await actorFor("aisha@elite.qa");
-  const client = await actorFor("client@elite.qa");
+ // A client-portal account left over from before the portal was retired (records are kept).
+  const legacyClient = await db.client.findFirstOrThrow({ select: { id: true } });
+  const client = await db.user.create({
+    data: { name: "Legacy Portal Client", email: "legacy.client@example.com", role: "CLIENT", clientId: legacyClient.id, passwordHash: await hashPassword("LegacyClient2026") },
+    select: { id: true, role: true, clientId: true },
+  });
   const today = businessDate();
   const page = { page: 1, pageSize: 200, sort: "createdAt" as const, dir: "desc" as const };
 
@@ -73,7 +79,7 @@ async function main() {
   check("ADMIN configures scoring", hasPermission(admin, "performance.configure"));
   check("MANAGER can't configure scoring", !hasPermission(manager, "performance.configure"));
   check("AGENT can't view team", !hasPermission(omar, "tasks.viewTeam") && !hasPermission(omar, "reports.viewTeam"));
-  check("CLIENT is not staff", !isStaff(client) && hasPermission(client, "portal.access") && !hasPermission(client, "crm.access"));
+  check("CLIENT is not staff and has no permissions", !isStaff(client) && !hasPermission(client, "crm.access"));
   check("CLIENT scope returns nothing", JSON.stringify(scope.leads(client)) === JSON.stringify({ id: { in: [] } }));
 
   // ── Property hierarchy ──
@@ -185,32 +191,21 @@ async function main() {
   const own = await agentPerformance(omar, omar.id, resolveRange("month"));
   check("agent performance has 30-day trend", own.trend.length === 30);
 
-  // ── Client accounts & isolation ──
-  const reg = await registerClientAccount(registerClientSchema.parse({ name: "Ops Portal A", email: "ops.a@example.com", phone: "+974 5000 2222", password: "OpsPortal2026" }));
-  check("self-registration always creates a CLIENT linked to a client record", reg.role === "CLIENT" && Boolean(reg.clientId));
-  const regB = await registerClientAccount(registerClientSchema.parse({ name: "Ops Portal B", email: "ops.b@example.com", phone: "+974 5000 3333", password: "OpsPortal2026" }));
-  await rejects("e-mail must be unique", () => registerClientAccount(registerClientSchema.parse({ name: "Dup", email: "ops.a@example.com", phone: "+974 5000 2222", password: "OpsPortal2026" })), /already/i);
-  const someProperty = await db.property.findFirstOrThrow({ where: { status: "AVAILABLE" } });
-  await db.propertyInterest.create({ data: { propertyId: someProperty.id, clientId: regB.clientId! } });
-  const aProps = await portalProperties(reg, "http://test");
-  check("client A doesn't see client B's shortlist", !aProps.some((p) => p.id === someProperty.id));
-  check("client B sees their shortlist", (await portalProperties(regB, "http://test")).some((p) => p.id === someProperty.id));
-  await rejects("staff can't use portal services", () => portalOverview(omar, "http://test"), /client accounts/i);
+  // ── Retired client accounts ──
+  await rejects("legacy client accounts can't sign in", () => authenticate("legacy.client@example.com", "LegacyClient2026", "test"), /incorrect/i);
   check("client sees no CRM tasks", (await listTasks(client, page as never, {})).total === 0);
   await rejects("client can't create CRM tasks", () => createTask(client, taskSchema.parse({ title: "x", priority: "LOW", status: "TODO" })));
-  const seededPortal = await portalTasks(client);
-  check("client sees only tasks shared with them", seededPortal.length > 0 && (await db.task.count({ where: { id: { in: seededPortal.map((t) => t.id) }, OR: [{ clientVisible: false }, { clientId: { not: client.clientId } }] } })) === 0);
-  const ownProps = await portalProperties(client, "http://test");
-  check("portal properties hide owner data", ownProps.length > 0 && ownProps.every((p) => !("ownerId" in p) && !("owner" in p)));
-  check("portal enquiries are client-safe", (await portalLeads(client)).every((l) => !("notes" in l) && !("priority" in l)));
 
   // ── Public website lead & password reset ──
   const pub = await createPublicLead(publicLeadSchema.parse({ fullName: "Ops Visitor", phone: "+974 5000 4444", message: "Hi" }));
   check("public lead lands in the CRM with a response task", Boolean(await db.task.findFirst({ where: { leadId: pub.id, type: "LEAD_RESPONSE" } })));
-  await requestPasswordReset("ops.a@example.com");
-  await requestPasswordReset("ops.a@example.com");
+  const agentUser = await db.user.findUniqueOrThrow({ where: { email: "aisha@elite.qa" }, select: { id: true } });
+  await requestPasswordReset("aisha@elite.qa");
+  await requestPasswordReset("aisha@elite.qa");
   await requestPasswordReset("nobody@example.com");
-  check("password reset sends one code per minute, unknown e-mail none", (await db.otpCode.count({ where: { userId: reg.id } })) === 1 && (await db.otpCode.count({ where: { user: { email: "nobody@example.com" } } })) === 0);
+  await requestPasswordReset("legacy.client@example.com");
+  check("password reset sends one code per minute, unknown e-mail none", (await db.otpCode.count({ where: { userId: agentUser.id } })) === 1 && (await db.otpCode.count({ where: { user: { email: "nobody@example.com" } } })) === 0);
+  check("retired client accounts get no reset code", (await db.otpCode.count({ where: { userId: client.id } })) === 0);
 
   console.log(`\noperations tests: ${pass} passed, ${fail} failed`);
   await db.$disconnect();

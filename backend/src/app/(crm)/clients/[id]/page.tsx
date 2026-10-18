@@ -24,10 +24,6 @@ import { ActivityTimeline } from "@/components/shared/activity-timeline";
 import { AgentCell } from "@/components/shared/user-avatar";
 import { RecordActions } from "@/components/shared/record-actions";
 import { LogActivityButton } from "@/components/activities/log-activity";
-import { PortalAccessCard } from "@/components/clients/portal-access";
-import { portalAccessFor } from "@/services/client-accounts";
-import { hasPermission } from "@/lib/permissions";
-import { CLIENT_APP_URL } from "@/lib/env";
 import { InterestList } from "@/components/shared/interest-list";
 import { DealMiniList, ViewingMiniList } from "@/components/shared/related-lists";
 import { ClientHeaderActions } from "@/components/clients/client-header-actions";
@@ -44,13 +40,12 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
   const client = await getClient(user, id);
   if (!client) notFound();
   const viewer = toViewer(user);
-  const [notes, activity, agents, settings, tasks, portalAccount, documents, reservations] = await Promise.all([
+  const [notes, activity, agents, settings, tasks, documents, reservations] = await Promise.all([
     listNotes("client", id),
     timeline("clientId", id, 40),
     listAssignableUsers(),
     getSettings(),
     listTasks(user, { page: 1, pageSize: 50, sort: "dueDate", dir: "asc" }, { clientId: id }),
-    portalAccessFor(id),
     listDocuments(user, "client", id),
     db.reservation.findMany({ where: { clientId: id }, orderBy: { createdAt: "desc" }, take: 10, select: { id: true, reference: true, status: true, amount: true, currency: true, createdAt: true, property: { select: { reference: true, title: true } } } }),
   ]);
@@ -263,14 +258,6 @@ export default async function ClientPage({ params }: PageProps<"/clients/[id]">)
                 {client.interests.length} saved home{client.interests.length === 1 ? "" : "s"}
                 {priceDrops > 0 ? ` · ${priceDrops} with a price drop since saved` : ""} · {client.viewings.filter((v) => v.bookedByClient).length} booked online
               </p>
-            </CardContent>
-          </Card>
-          <Card>
-            <CardHeader>
-              <CardTitle>Client portal</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <PortalAccessCard clientId={client.id} defaultEmail={client.email} account={portalAccount} portalUrl={CLIENT_APP_URL} canManage={hasPermission(user, "clients.managePortal")} />
             </CardContent>
           </Card>
           <NotesPanel target="client" targetId={client.id} notes={notes} currentUserId={user.id} isManager={viewer.isManager} />

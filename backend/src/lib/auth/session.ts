@@ -7,7 +7,6 @@ import { redirect } from "next/navigation";
 import { db } from "@/lib/db";
 import type { Role } from "@/generated/prisma/enums";
 import { isStaff } from "@/lib/permissions";
-import { CLIENT_PORTAL_URL } from "@/lib/env";
 import { SESSION_COOKIE, SESSION_RENEW_WHEN_LEFT_MS, SESSION_TTL_MS } from "./constants";
 
 export interface SessionUser {
@@ -94,7 +93,7 @@ export async function resolveSession(token: string, { refreshCookie = false } = 
   if (!session) return null;
 
   const now = Date.now();
-  if (session.expiresAt.getTime() <= now || !session.user.isActive) {
+  if (session.expiresAt.getTime() <= now || !session.user.isActive || session.user.role === "CLIENT") {
     await db.session.delete({ where: { id: session.id } }).catch(() => undefined);
     return null;
   }
@@ -117,13 +116,9 @@ export async function resolveSession(token: string, { refreshCookie = false } = 
   return user;
 }
 
-/**
- * For CRM pages and layouts: redirect to /login when signed out, and send client-portal
- * accounts to the portal — they never see CRM pages.
- */
+/** For CRM pages and layouts: redirect to /login when signed out (only staff have sessions). */
 export async function requireUser(): Promise<SessionUser> {
   const user = await getCurrentUser();
-  if (!user) redirect("/login");
-  if (!isStaff(user)) redirect(CLIENT_PORTAL_URL);
+  if (!user || !isStaff(user)) redirect("/login");
   return user;
 }

@@ -3,24 +3,20 @@
 import React from 'react';
 import { useTranslations } from 'next-intl';
 import { Heart } from 'lucide-react';
-import { useAuth } from '@/lib/AuthContext';
-import { useSavedHomes } from '@/lib/SavedHomesContext';
+import { useSavedHomes } from '@/lib/saved-homes';
 
-/** Heart toggle. Signed-out visitors are sent to sign in; staff don't get one. */
+/** Heart toggle. Saved homes stay in the visitor's browser (see lib/saved-homes). */
 export default function SaveButton({ reference, variant = 'icon', className = '' }: { reference: string; variant?: 'icon' | 'button'; className?: string }) {
   const t = useTranslations('property');
-  const tb = useTranslations('booking');
-  const { user } = useAuth();
   const { isSaved, toggle } = useSavedHomes();
-  if (user?.app === 'crm') return null;
   const saved = isSaved(reference);
-  const label = user ? (saved ? t('saved') : t('save')) : tb('save_sign_in');
+  const label = saved ? t('saved') : t('save');
 
   if (variant === 'button') {
     return (
       <button
         type="button"
-        onClick={() => void toggle(reference)}
+        onClick={() => toggle(reference)}
         aria-pressed={saved}
         className={`flex items-center justify-center gap-2 rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2 ${className}`}
       >
@@ -36,7 +32,7 @@ export default function SaveButton({ reference, variant = 'icon', className = ''
         // Cards are links: keep the click on the heart.
         e.preventDefault();
         e.stopPropagation();
-        void toggle(reference);
+        toggle(reference);
       }}
       aria-pressed={saved}
       aria-label={label}

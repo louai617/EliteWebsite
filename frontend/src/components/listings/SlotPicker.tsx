@@ -19,7 +19,7 @@ function nextDays(n: number) {
   return Array.from({ length: n }, (_, i) => fmt.format(new Date(Date.now() + i * 86_400_000)));
 }
 
-/** Day chips + free time slots for a listing (agent's and client's calendars are checked server-side). */
+/** Day chips + free time slots for a listing (the agent's calendar is checked server-side). */
 export default function SlotPicker({ reference, value, onChange, reloadKey = 0 }: { reference: string; value: string | null; onChange: (slot: string | null) => void; reloadKey?: number }) {
   const t = useTranslations('booking');
   const locale = useLocale();
@@ -31,7 +31,7 @@ export default function SlotPicker({ reference, value, onChange, reloadKey = 0 }
   useEffect(() => {
     const controller = new AbortController();
     api
-      .get<{ slots: Slot[] }>(`/portal/bookings/slots?property=${encodeURIComponent(reference)}&date=${day}`, controller.signal)
+      .get<{ slots: Slot[] }>(`/public/viewings/slots?property=${encodeURIComponent(reference)}&date=${day}`, controller.signal)
       .then((r) => setResult({ key, slots: r.slots, error: null }))
       .catch((err) => {
         if (!controller.signal.aborted) setResult({ key, slots: [], error: errorMessage(err, t('error')) });

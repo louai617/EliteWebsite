@@ -1,33 +1,58 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { CalendarCheck, CalendarDays, CalendarPlus, Loader2, X } from 'lucide-react';
+import { CalendarCheck, CalendarDays, CalendarPlus, Loader2, MapPin, X } from 'lucide-react';
 import SlotPicker from './SlotPicker';
-import { api, API_URL, errorMessage } from '@/lib/api';
-import { useAuth } from '@/lib/AuthContext';
+import GuestDetails, { contactProblem, EMPTY_CONTACT, type GuestContact } from './GuestDetails';
+import { api, ApiError, errorMessage } from '@/lib/api';
+import type { GuestBooking } from '@/lib/api-types';
 
 const TZ = process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE || 'Asia/Qatar';
 
+const icsDate = (iso: string) => iso.replace(/[-:]/g, '').replace(/\.\d{3}/, '');
+const icsText = (s: string) => s.replace(/[\\;,]/g, (c) => `\\${c}`).replace(/\n/g, '\\n');
+
+/** A downloadable calendar entry for the booked viewing (made in the browser). */
+function calendarFile(b: GuestBooking) {
+  const lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//ELITE Real Estate//Website//EN',
+    'BEGIN:VEVENT',
+    `UID:viewing-${b.reference}-${icsDate(b.startsAt)}@eliterealestate.qa`,
+    `DTSTAMP:${icsDate(new Date().toISOString())}`,
+    `DTSTART:${icsDate(b.startsAt)}`,
+    `DTEND:${icsDate(b.endsAt)}`,
+    `SUMMARY:${icsText(`Viewing: ${b.title}`)}`,
+    `LOCATION:${icsText(b.address)}`,
+    `DESCRIPTION:${icsText(`Reference ${b.reference}${b.agent ? `\nAgent: ${b.agent.name}${b.agent.phone ? ` (${b.agent.phone})` : ''}` : ''}\nDirections: ${b.directionsUrl}`)}`,
+    'STATUS:TENTATIVE',
+    'END:VEVENT',
+    'END:VCALENDAR',
+  ];
+  return URL.createObjectURL(new Blob([lines.join('\r\n')], { type: 'text/calendar' }));
+}
+
 /**
- * Book a viewing on a listing. The booking goes straight into the CRM: the agent gets a
- * "confirm" task and the client sees it in their dashboard.
+ * Book a viewing on a listing — no account needed. The visitor picks a free time and leaves
+ * their name, phone and e-mail; the booking goes straight into the agent app as a viewing on
+ * a website lead, and the agent confirms it (the visitor is e-mailed both times).
  */
 export default function BookViewing({ reference, agentName, variant = 'primary', className = '' }: { reference: string; agentName: string; variant?: 'primary' | 'compact'; className?: string }) {
   const t = useTranslations('booking');
+  const tg = useTranslations('guest');
   const locale = useLocale();
-  const pathname = usePathname();
-  const { user } = useAuth();
   const [open, setOpen] = useState(false);
   const [slot, setSlot] = useState<string | null>(null);
   const [reloadKey, setReloadKey] = useState(0);
   const [note, setNote] = useState('');
+  const [contact, setContact] = useState<GuestContact>(EMPTY_CONTACT);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[] | undefined>>({});
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
-  const [booked, setBooked] = useState<{ id: string; startsAt: string } | null>(null);
-  const isClient = user?.app === 'portal';
+  const [booked, setBooked] = useState<GuestBooking | null>(null);
+  const [icsUrl, setIcsUrl] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -36,18 +61,35 @@ export default function BookViewing({ reference, agentName, variant = 'primary',
     return () => window.removeEventListener('keydown', onKey);
   }, [open]);
 
+  useEffect(() => () => {
+    if (icsUrl) URL.revokeObjectURL(icsUrl);
+  }, [icsUrl]);
+
   const book = async () => {
     if (!slot) return;
+    const problem = contactProblem(contact);
+    if (problem) {
+      setFieldErrors({ [problem]: [tg(`invalid_${problem}`)] });
+      return;
+    }
     setBusy(true);
     setError(null);
+    setFieldErrors({});
     try {
-      const res = await api.post<{ id: string; startsAt: string }>('/portal/bookings', { property: reference, startsAt: slot, note: note.trim() });
+      const res = await api.post<GuestBooking>('/public/viewings', {
+        property: reference, startsAt: slot, note: note.trim(),
+        name: contact.name.trim(), phone: contact.phone.trim(), email: contact.email.trim(), website: contact.website,
+      });
       setBooked(res);
+      if (res.endsAt) setIcsUrl(calendarFile(res));
     } catch (err) {
       setError(errorMessage(err, t('error')));
+      if (err instanceof ApiError && err.fields) setFieldErrors(err.fields);
       // A slot may have just been taken: reload the times.
-      setSlot(null);
-      setReloadKey((k) => k + 1);
+      if (err instanceof ApiError && err.code === 'CONFLICT') {
+        setSlot(null);
+        setReloadKey((k) => k + 1);
+      }
     } finally {
       setBusy(false);
     }
@@ -95,35 +137,22 @@ export default function BookViewing({ reference, agentName, variant = 'primary',
               </button>
             </div>
 
-            {!user ? (
-              <div className="rounded-2xl bg-gray-50 p-6 text-center">
-                <CalendarCheck className="mx-auto h-8 w-8 text-primary" aria-hidden="true" />
-                <p className="mt-3 font-bold text-secondary">{t('sign_in_title')}</p>
-                <p className="mt-1 text-sm text-gray-500">{t('sign_in_body')}</p>
-                <div className="mt-5 flex justify-center gap-3">
-                  <Link href={`/${locale}/login?next=${encodeURIComponent(pathname)}`} className="rounded-xl bg-secondary px-5 py-2.5 text-sm font-bold text-white hover:bg-primary">
-                    {t('sign_in')}
-                  </Link>
-                  <Link href={`/${locale}/register?next=${encodeURIComponent(pathname)}`} className="rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-bold text-secondary hover:border-primary">
-                    {t('create_account')}
-                  </Link>
-                </div>
-              </div>
-            ) : !isClient ? (
-              <p className="rounded-2xl bg-gray-50 p-6 text-center text-sm text-gray-600">{t('staff_note')}</p>
-            ) : booked ? (
+            {booked ? (
               <div className="rounded-2xl bg-emerald-50 p-6 text-center">
                 <CalendarCheck className="mx-auto h-9 w-9 text-emerald-600" aria-hidden="true" />
                 <p className="mt-3 text-lg font-bold text-secondary">{t('success_title')}</p>
                 <p className="mt-1 font-medium text-emerald-800">{when(booked.startsAt)}</p>
-                <p className="mt-2 text-sm text-gray-600">{t('success_body', { agent: agentName })}</p>
+                <p className="mt-2 text-sm text-gray-600">{t('success_body', { agent: booked.agent?.name ?? agentName })}</p>
                 <div className="mt-5 flex flex-wrap justify-center gap-3">
-                  <Link href={`/${locale}/dashboard/bookings`} className="rounded-xl bg-secondary px-5 py-2.5 text-sm font-bold text-white hover:bg-primary">
-                    {t('view_bookings')}
-                  </Link>
-                  <a href={`${API_URL}/portal/bookings/${booked.id}/calendar`} className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-bold text-secondary hover:border-primary">
-                    <CalendarPlus className="h-4 w-4" aria-hidden="true" />
-                    {t('add_calendar')}
+                  {icsUrl && (
+                    <a href={icsUrl} download={`viewing-${booked.reference}.ics`} className="inline-flex items-center gap-2 rounded-xl bg-secondary px-5 py-2.5 text-sm font-bold text-white hover:bg-primary">
+                      <CalendarPlus className="h-4 w-4" aria-hidden="true" />
+                      {t('add_calendar')}
+                    </a>
+                  )}
+                  <a href={booked.directionsUrl} target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-2 rounded-xl border border-gray-200 bg-white px-5 py-2.5 text-sm font-bold text-secondary hover:border-primary">
+                    <MapPin className="h-4 w-4" aria-hidden="true" />
+                    {t('directions')}
                   </a>
                 </div>
               </div>
@@ -142,6 +171,10 @@ export default function BookViewing({ reference, agentName, variant = 'primary',
                     className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-primary"
                   />
                 </label>
+
+                <div className="mt-5">
+                  <GuestDetails value={contact} onChange={(c) => { setContact(c); setFieldErrors({}); }} fieldErrors={fieldErrors} />
+                </div>
 
                 {error && (
                   <p className="mt-3 rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">

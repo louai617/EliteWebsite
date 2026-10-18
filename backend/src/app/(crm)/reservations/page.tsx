@@ -70,10 +70,19 @@ export default async function ReservationsPage({ searchParams }: PageProps<"/res
                     <p className="mt-1 text-xs text-muted-foreground">{formatDateTime(r.createdAt)}</p>
                   </TableCell>
                   <TableCell>
-                    <Link href={`/clients/${r.client.id}`} className="text-[13px] hover:underline">
-                      {r.client.fullName}
-                    </Link>
-                    <p className="text-xs text-muted-foreground">{r.client.phone}</p>
+                    {r.client ? (
+                      <Link href={`/clients/${r.client.id}`} className="text-[13px] hover:underline">
+                        {r.client.fullName}
+                      </Link>
+                    ) : r.lead ? (
+                      <Link href={`/leads/${r.lead.id}`} className="text-[13px] hover:underline">
+                        {r.contactName ?? r.lead.fullName}
+                      </Link>
+                    ) : (
+                      <p className="text-[13px]">{r.contactName ?? "Website visitor"}</p>
+                    )}
+                    <p className="text-xs text-muted-foreground">{r.contactPhone ?? r.client?.phone ?? r.lead?.phone}</p>
+                    {r.contactEmail && <p className="text-xs text-muted-foreground">{r.contactEmail}</p>}
                   </TableCell>
                   <TableCell>
                     <Link href={`/properties/${r.property.id}`} className="block max-w-[220px] hover:underline">
@@ -108,7 +117,7 @@ export default async function ReservationsPage({ searchParams }: PageProps<"/res
                       reference={r.reference}
                       status={r.status}
                       amount={formatMoney(r.amount, r.currency)}
-                      client={r.client.fullName}
+                      client={r.contactName ?? r.client?.fullName ?? r.lead?.fullName ?? "the visitor"}
                       canCancelConfirmed={isManager(user)}
                     />
                   </TableCell>

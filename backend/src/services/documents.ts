@@ -6,11 +6,10 @@ import { db } from "@/lib/db";
 import { forbidden, notFound } from "@/lib/errors";
 import { isManager, isStaff, scope, type Actor } from "@/lib/permissions";
 import { DOCUMENT_KIND_META } from "@/lib/constants";
-import type { DocumentTarget, documentMetaSchema, portalDocumentSchema } from "@/schemas/document";
+import type { DocumentTarget, documentMetaSchema } from "@/schemas/document";
 import { logActivity } from "./activity";
 import { assertCanAccess } from "./access";
 import { deleteDocumentFile, readDocumentFile, safeFileName, saveDocumentFile } from "./storage";
-import { onProofUploaded } from "./reservations";
 
 /**
  * Documents attached to leads, clients, deals and reservations.
@@ -22,8 +21,6 @@ import { onProofUploaded } from "./reservations";
  *  - Only managers delete documents, and every upload/delete is in the activity log: the
  *    viewing / booking paperwork is what lets a lead move forward.
  */
-
-type PortalActor = Actor & { clientId?: string | null };
 
 export const documentSelect = {
   id: true,
@@ -44,8 +41,6 @@ export const documentSelect = {
 } satisfies Prisma.DocumentSelect;
 
 export type DocumentItem = Prisma.DocumentGetPayload<{ select: typeof documentSelect }>;
-
-const CLIENT_HIDDEN_KINDS: DocumentKind[] = ["VIEWING_FORM"];
 
 async function assertTargetAccess(actor: Actor, target: DocumentTarget, targetId: string) {
   if (target === "reservation") {
@@ -125,7 +120,7 @@ export async function deleteDocument(actor: Actor, id: string) {
 }
 
 /** Permission check + file read for GET /api/documents/:id. Returns null when not allowed. */
-export async function openDocument(user: PortalActor, id: string) {
+export async function openDocument(user: Actor, id: string) {
   const doc = await db.document.findUnique({
     where: { id },
     select: { id: true, kind: true, fileName: true, mimeType: true, storageKey: true, leadId: true, clientId: true, dealId: true, reservation: { select: { clientId: true, agentId: true } } },
@@ -142,62 +137,8 @@ export async function openDocument(user: PortalActor, id: string) {
       ]);
       allowed = checks.some(Boolean) || doc.reservation?.agentId === user.id;
     }
-  } else if (user.role === "CLIENT" && user.clientId) {
-    allowed = !CLIENT_HIDDEN_KINDS.includes(doc.kind) && (doc.clientId === user.clientId || doc.reservation?.clientId === user.clientId);
   }
   if (!allowed) return null;
   const buf = await readDocumentFile(doc.storageKey);
   return buf ? { buf, fileName: doc.fileName, mimeType: doc.mimeType } : null;
-}
-
-// ───────────────────────────── Client portal ─────────────────────────────
-
-function portalClientId(actor: PortalActor) {
-  if (actor.role !== "CLIENT" || !actor.clientId) throw forbidden("This area is for client accounts.");
-  return actor.clientId;
-}
-
-export async function portalDocuments(actor: PortalActor) {
-  const clientId = portalClientId(actor);
-  return db.document.findMany({
-    where: { kind: { notIn: CLIENT_HIDDEN_KINDS }, OR: [{ clientId }, { reservation: { clientId } }] },
-    orderBy: { createdAt: "desc" },
-    select: { id: true, kind: true, title: true, number: true, expiresAt: true, fileName: true, mimeType: true, size: true, uploadedByClient: true, createdAt: true, reservationId: true },
-  });
-}
-
-/** A client uploads their QID / passport / payment proof from the website. */
-export async function portalUploadDocument(actor: PortalActor, input: z.output<typeof portalDocumentSchema>) {
-  const clientId = portalClientId(actor);
-  let reservation: { id: string; reference: string; status: string; agentId: string | null } | null = null;
-  if (input.reservationId) {
-    reservation = await db.reservation.findFirst({ where: { id: input.reservationId, clientId }, select: { id: true, reference: true, status: true, agentId: true } });
-    if (!reservation) throw notFound("Reservation");
-  }
-  const saved = await saveDocumentFile(input.file);
-  let result;
-  try {
-    result = await db.$transaction(async (tx) => {
-      const client = await tx.client.findUniqueOrThrow({ where: { id: clientId }, select: { fullName: true, agentId: true } });
-      const doc = await tx.document.create({
-        data: {
-          kind: input.kind, title: input.title, number: input.number, expiresAt: input.expiresAt,
-          fileName: safeFileName(input.file.name, saved.mimeType), mimeType: saved.mimeType, size: saved.size, storageKey: saved.storageKey,
-          clientId, reservationId: reservation?.id ?? null, uploadedByClient: true,
-        },
-        select: { id: true, kind: true, title: true, fileName: true, createdAt: true, reservationId: true },
-      });
-      await logActivity(tx, {
-        action: "CREATED", entityType: "DOCUMENT", entityId: doc.id, entityLabel: label(doc.kind, doc.title), userId: null, clientId,
-        description: `${client.fullName} uploaded ${label(doc.kind, doc.title).toLowerCase()} on the website`,
-      });
-      return { doc, client, reservation };
-    });
-  } catch (error) {
-    await deleteDocumentFile(saved.storageKey);
-    throw error;
-  }
-  // The receipt is on file: the reservation moves to "payment to verify".
-  if (result.reservation && input.kind === "PROOF_OF_PAYMENT") await onProofUploaded(result.reservation.id);
-  return result.doc;
 }

@@ -19,14 +19,14 @@ import { apiError, apiOk } from "./response";
  *  2. Rate limiting (optional, per IP).
  *  3. Authentication — session cookie or `Authorization: Bearer <token>`. Roles always come
  *     from the database session, never from the request.
- *  4. Authorization — `audience` (staff / client / any) and an optional `permission` from
+ *  4. Authorization — `audience` (public / staff / any signed-in user) and an optional `permission` from
  *     the central matrix in lib/permissions.ts.
  *  5. Validation — JSON body and query string through Zod schemas.
  *  6. Uniform responses and error mapping (lib/api/response.ts); internal errors are logged,
  *     never leaked.
  */
 
-type Audience = "public" | "authenticated" | "staff" | "client";
+type Audience = "public" | "authenticated" | "staff";
 
 interface RouteOptions<B extends z.ZodType | undefined, Q extends z.ZodType | undefined> {
   audience: Audience;
@@ -145,7 +145,6 @@ export function apiRoute<A extends Audience, B extends z.ZodType | undefined = u
       if (options.audience !== "public" && !user) throw new AppError("Please sign in to continue.", "UNAUTHORIZED");
       if (user) {
         if (options.audience === "staff" && !isStaff(user)) throw forbidden();
-        if (options.audience === "client" && !hasPermission(user, "portal.access")) throw forbidden("This endpoint is for client accounts.");
       }
       if (options.permission && (!user || !hasPermission(user, options.permission))) throw forbidden();
 

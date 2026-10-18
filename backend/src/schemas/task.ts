@@ -15,7 +15,7 @@ export const taskSchema = z.object({
   propertyId: optionalId,
   dealId: optionalId,
   viewingId: optionalId,
-  /** Show this task to the client in the client portal ("next steps"). */
+  /** Legacy (client portal retired): kept so older tasks keep their value. */
   clientVisible: checkbox,
 });
 export type TaskInput = z.input<typeof taskSchema>;

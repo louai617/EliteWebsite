@@ -41,7 +41,7 @@ const LeadForm: React.FC<LeadFormProps> = ({ propertyId }) => {
     setIsSubmitting(true);
     setError(null);
     try {
-      // Creates a lead in the CRM (backend/src/services/portal.ts → createPublicLead).
+      // Creates a lead in the CRM (backend/src/services/website-leads.ts → createPublicLead).
       await api.post('/public/leads', {
         fullName: data.full_name,
         email: data.email,

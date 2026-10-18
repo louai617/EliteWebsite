@@ -11,8 +11,8 @@ const body = loginSchema.extend({
 });
 
 /**
- * POST /api/auth/login — staff and client accounts. Sets the httpOnly session cookie.
- * The response says which app the user belongs to (CRM or client portal).
+ * POST /api/auth/login — sets the httpOnly session cookie.
+ * Staff accounts only (the website has no visitor accounts).
  */
 export const POST = apiRoute({ audience: "public", body, rateLimit: { limit: 30, windowMs: 15 * 60_000 } }, async ({ body, request }) => {
   const ip = request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";

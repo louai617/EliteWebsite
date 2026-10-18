@@ -30,16 +30,3 @@ export const uploadDocumentSchema = z
     file: fd.get("file"),
   }))
   .pipe(documentMetaSchema.extend({ file: fileField }));
-
-/** What clients can upload themselves from the website. */
-export const CLIENT_UPLOAD_KINDS = ["QID", "PASSPORT", "VISA", "TRADE_LICENSE", "PROOF_OF_PAYMENT", "OTHER"] as const;
-
-export const portalDocumentSchema = z.object({
-  kind: z.enum(CLIENT_UPLOAD_KINDS, { error: "Choose the document type" }),
-  title: optionalText(120),
-  number: optionalText(60),
-  expiresAt: optionalDate,
-  /** Attach to one of the client's reservations (proof of payment). */
-  reservationId: z.preprocess((v) => (v === "" || v == null ? null : v), id.nullable()).optional(),
-  file: fileField,
-});

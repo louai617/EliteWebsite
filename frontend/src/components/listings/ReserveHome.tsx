@@ -1,50 +1,48 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { useRouter } from 'next/navigation';
 import { useLocale, useTranslations } from 'next-intl';
-import { CreditCard, KeyRound, Landmark, Loader2, ShieldCheck, X } from 'lucide-react';
-import { api, errorMessage } from '@/lib/api';
-import { useAuth } from '@/lib/AuthContext';
-import type { Reservation, ReservationQuote } from '@/lib/api-types';
-import { PaymentDetails, ReceiptUpload } from './PaymentDetails';
-
-const TZ = process.env.NEXT_PUBLIC_BUSINESS_TIMEZONE || 'Asia/Qatar';
+import { CreditCard, KeyRound, Landmark, Loader2, X } from 'lucide-react';
+import { api, ApiError, errorMessage } from '@/lib/api';
+import type { ReservationQuote } from '@/lib/api-types';
+import GuestDetails, { contactProblem, EMPTY_CONTACT, type GuestContact } from './GuestDetails';
 
 /**
- * Reserve a home with a booking deposit. Fawran / bank transfer today; card payments are
- * shown as "coming soon". The reservation lands in the agent app (Reservations).
+ * Reserve a home with a booking deposit — no account needed. Fawran / bank transfer today;
+ * card payments are shown as "coming soon". The visitor leaves their details, the reservation
+ * lands in the agent app (Reservations), and they are taken to a private reservation page
+ * (also e-mailed) with the bank details and the receipt upload.
  */
 export default function ReserveHome({ reference }: { reference: string }) {
   const t = useTranslations('reserve');
+  const tg = useTranslations('guest');
   const locale = useLocale();
-  const pathname = usePathname();
-  const { user } = useAuth();
+  const router = useRouter();
   const [open, setOpen] = useState(false);
   const [quote, setQuote] = useState<ReservationQuote | null>(null);
   const [loading, setLoading] = useState(false);
   const [note, setNote] = useState('');
+  const [contact, setContact] = useState<GuestContact>(EMPTY_CONTACT);
+  const [fieldErrors, setFieldErrors] = useState<Record<string, string[] | undefined>>({});
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [reserved, setReserved] = useState<Reservation | null>(null);
-  const isClient = user?.app === 'portal';
   const fmt = (n: number, c = 'QAR') => `${c} ${n.toLocaleString(locale === 'ar' ? 'ar-QA' : 'en-US')}`;
 
   useEffect(() => {
-    if (!open || !isClient || quote) return;
+    if (!open || quote) return;
     let cancelled = false;
     // eslint-disable-next-line react-hooks/set-state-in-effect -- loading flag for the fetch below
     setLoading(true);
     api
-      .get<ReservationQuote>(`/portal/reservations/quote?property=${encodeURIComponent(reference)}`)
+      .get<ReservationQuote>(`/public/reservations/quote?property=${encodeURIComponent(reference)}`)
       .then((q) => !cancelled && setQuote(q))
       .catch((err) => !cancelled && setError(errorMessage(err)))
       .finally(() => !cancelled && setLoading(false));
     return () => {
       cancelled = true;
     };
-  }, [open, isClient, quote, reference]);
+  }, [open, quote, reference]);
 
   useEffect(() => {
     if (!open) return;
@@ -54,13 +52,24 @@ export default function ReserveHome({ reference }: { reference: string }) {
   }, [open]);
 
   const reserve = async () => {
+    const problem = contactProblem(contact);
+    if (problem) {
+      setFieldErrors({ [problem]: [tg(`invalid_${problem}`)] });
+      return;
+    }
     setBusy(true);
     setError(null);
+    setFieldErrors({});
     try {
-      setReserved(await api.post<Reservation>('/portal/reservations', { property: reference, method: 'FAWRAN', note: note.trim() }));
+      const res = await api.post<{ reference: string | null; token: string | null }>('/public/reservations', {
+        property: reference, method: 'FAWRAN', note: note.trim(),
+        name: contact.name.trim(), phone: contact.phone.trim(), email: contact.email.trim(), website: contact.website,
+      });
+      if (res.token) router.push(`/${locale}/reservation/${res.token}`);
+      else setOpen(false);
     } catch (err) {
       setError(errorMessage(err));
-    } finally {
+      if (err instanceof ApiError && err.fields) setFieldErrors(err.fields);
       setBusy(false);
     }
   };
@@ -84,46 +93,16 @@ export default function ReserveHome({ reference }: { reference: string }) {
             <div className="mb-4 flex items-start justify-between gap-4">
               <div>
                 <h2 id="reserve-title" className="text-xl font-bold text-secondary">
-                  {reserved ? t('success_title') : t('title')}
+                  {t('title')}
                 </h2>
-                {!reserved && <p className="mt-1 text-sm text-gray-500">{t('subtitle')}</p>}
+                <p className="mt-1 text-sm text-gray-500">{t('subtitle')}</p>
               </div>
               <button type="button" onClick={() => setOpen(false)} aria-label="Close" className="rounded-full p-1.5 text-gray-400 hover:bg-gray-100 hover:text-gray-700">
                 <X className="h-5 w-5" />
               </button>
             </div>
 
-            {!user ? (
-              <div className="rounded-2xl bg-gray-50 p-6 text-center">
-                <ShieldCheck className="mx-auto h-8 w-8 text-primary" aria-hidden="true" />
-                <p className="mt-3 font-bold text-secondary">{t('sign_in_title')}</p>
-                <p className="mt-1 text-sm text-gray-500">{t('sign_in_body')}</p>
-                <div className="mt-5 flex justify-center gap-3">
-                  <Link href={`/${locale}/login?next=${encodeURIComponent(pathname)}`} className="rounded-xl bg-secondary px-5 py-2.5 text-sm font-bold text-white hover:bg-primary">
-                    Sign in
-                  </Link>
-                  <Link href={`/${locale}/register?next=${encodeURIComponent(pathname)}`} className="rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-bold text-secondary hover:border-primary">
-                    Create account
-                  </Link>
-                </div>
-              </div>
-            ) : !isClient ? (
-              <p className="rounded-2xl bg-gray-50 p-6 text-center text-sm text-gray-600">{t('staff_note')}</p>
-            ) : reserved && quote ? (
-              <div className="space-y-4">
-                <p className="text-sm text-gray-600">{t('success_body', { reference: reserved.reference })}</p>
-                <p className="text-sm font-bold text-amber-700">
-                  {t('pay_by', { date: new Date(reserved.payBy).toLocaleString(locale === 'ar' ? 'ar-QA' : 'en-GB', { day: 'numeric', month: 'long', hour: '2-digit', minute: '2-digit', timeZone: TZ }) })}
-                </p>
-                <PaymentDetails reference={reserved.reference} amount={fmt(reserved.amount, reserved.currency)} bank={quote.bank} />
-                <div className="flex flex-wrap items-start gap-3">
-                  <ReceiptUpload reservationId={reserved.id} />
-                  <Link href={`/${locale}/dashboard/bookings#reservations`} className="rounded-xl border border-gray-200 px-5 py-2.5 text-sm font-bold text-secondary hover:border-primary">
-                    {t('view_reservations')}
-                  </Link>
-                </div>
-              </div>
-            ) : loading || !quote ? (
+            {loading || !quote ? (
               error ? (
                 <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
                   {error}
@@ -133,13 +112,6 @@ export default function ReserveHome({ reference }: { reference: string }) {
                   <Loader2 className="h-4 w-4 animate-spin" /> …
                 </p>
               )
-            ) : quote.existing ? (
-              <div className="rounded-2xl bg-gray-50 p-6 text-center">
-                <p className="font-bold text-secondary">{t('existing', { reference: quote.existing.reference })}</p>
-                <Link href={`/${locale}/dashboard/bookings#reservations`} className="mt-4 inline-block rounded-xl bg-secondary px-5 py-2.5 text-sm font-bold text-white hover:bg-primary">
-                  {t('view_reservations')}
-                </Link>
-              </div>
             ) : !quote.available ? (
               <p className="rounded-2xl bg-gray-50 p-6 text-center text-sm text-gray-600">{t('unavailable')}</p>
             ) : (
@@ -174,6 +146,7 @@ export default function ReserveHome({ reference }: { reference: string }) {
                   <span className="mb-1.5 block text-xs font-bold uppercase tracking-wider text-gray-500">{t('note_label')}</span>
                   <textarea value={note} onChange={(e) => setNote(e.target.value)} rows={2} maxLength={500} className="w-full rounded-xl border border-gray-200 bg-gray-50 px-3 py-2 text-sm outline-none focus:border-primary" />
                 </label>
+                <GuestDetails value={contact} onChange={(c) => { setContact(c); setFieldErrors({}); }} fieldErrors={fieldErrors} />
                 {error && (
                   <p className="rounded-lg bg-red-50 px-3 py-2 text-sm text-red-700" role="alert">
                     {error}

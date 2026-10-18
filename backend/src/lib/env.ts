@@ -11,11 +11,8 @@ const list = (value: string | undefined) =>
     .map((v) => v.trim().replace(/\/+$/, ""))
     .filter(Boolean);
 
-/** Public URL of the client app (website + client portal), e.g. http://localhost:3001. */
+/** Public URL of the website (eliterealestate.qa), e.g. http://localhost:3001. */
 export const CLIENT_APP_URL = (process.env.CLIENT_APP_URL ?? "http://localhost:3001").replace(/\/+$/, "");
-
-/** Where client-portal users are sent if they open the staff CRM. */
-export const CLIENT_PORTAL_URL = process.env.CLIENT_PORTAL_URL ?? `${CLIENT_APP_URL}/en/dashboard`;
 
 /**
  * Browser origins allowed to call the API with credentials (CORS). Defaults to the client app.

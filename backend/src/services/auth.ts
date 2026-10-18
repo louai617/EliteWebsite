@@ -9,7 +9,7 @@ const GENERIC = "Incorrect e-mail or password.";
 /**
  * Shared credential check for the CRM login form and the REST API. Rate-limited per
  * IP + e-mail, constant-time for unknown e-mails, rejects deactivated accounts.
- * Returns the user; the caller decides which surface (CRM / portal) it may use.
+ * Only staff accounts can sign in (the website has no visitor accounts).
  */
 export async function authenticate(email: string, password: string, ip: string) {
   const key = `login:${ip}:${email}`;
@@ -26,6 +26,8 @@ export async function authenticate(email: string, password: string, ip: string) 
   }
   if (!(await verifyPassword(password, user.passwordHash))) throw new AppError(GENERIC, "UNAUTHORIZED");
   if (!user.isActive) throw new AppError("This account has been deactivated. Contact the agency.", "FORBIDDEN");
+  // Client portal accounts were retired: only staff can sign in (the records are kept).
+  if (user.role === "CLIENT") throw new AppError(GENERIC, "UNAUTHORIZED");
 
   resetRateLimit(key);
   await db.user.update({ where: { id: user.id }, data: { lastLoginAt: new Date() } });

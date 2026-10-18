@@ -9,7 +9,6 @@ import { changePassword, updateProfile } from "@/services/users";
 import { authenticate } from "@/services/auth";
 import { toPublicError } from "@/lib/errors";
 import { isStaff } from "@/lib/permissions";
-import { CLIENT_APP_URL } from "@/lib/env";
 
 export async function login(raw: LoginInput, next?: string): Promise<ActionResult<{ redirectTo: string }>> {
   const parsed = loginSchema.safeParse(raw);
@@ -19,9 +18,7 @@ export async function login(raw: LoginInput, next?: string): Promise<ActionResul
   try {
     const ip = (await headers()).get("x-forwarded-for")?.split(",")[0]?.trim() ?? "local";
     const user = await authenticate(email, password, ip);
-    if (!isStaff(user)) {
-      return { ok: false, error: `This is a client account. Please sign in on the client portal: ${CLIENT_APP_URL}` };
-    }
+    if (!isStaff(user)) return { ok: false, error: "Incorrect e-mail or password." };
     await createSession(user.id);
   } catch (error) {
     return { ok: false, error: toPublicError(error).message };

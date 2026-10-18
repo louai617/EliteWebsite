@@ -4,7 +4,7 @@ import { db } from "@/lib/db";
 import { hashPassword } from "@/lib/auth/password";
 import { keyedHash } from "@/lib/auth/secret";
 import { revokeAllSessions } from "@/lib/auth/session-store";
-import { APP_URL, CLIENT_APP_URL } from "@/lib/env";
+import { APP_URL } from "@/lib/env";
 import { invalid } from "@/lib/errors";
 import { formatDateTime } from "@/lib/format";
 import { logActivity } from "./activity";
@@ -39,8 +39,9 @@ function sameHash(a: string, b: string) {
 
 async function activeUser(email: string) {
   return db.user.findFirst({
-    where: { email: email.trim().toLowerCase(), isActive: true },
-    select: { id: true, name: true, email: true, role: true, clientId: true, client: { select: { agentId: true } } },
+    // Staff only: the website has no visitor accounts any more.
+    where: { email: email.trim().toLowerCase(), isActive: true, role: { not: "CLIENT" } },
+    select: { id: true, name: true, email: true },
   });
 }
 
@@ -64,22 +65,19 @@ export async function requestPasswordReset(email: string, ip?: string | null) {
       data: { userId: user.id, purpose: "PASSWORD_RESET", codeHash: codeHash(user.id, code), expiresAt: new Date(now + OTP_MINUTES * 60_000), requestedIp: ip?.slice(0, 64) ?? null },
     }),
   ]);
-  const status = await sendMail(user.email, "password-reset-code", passwordResetCode({ name: user.name, code, minutes: OTP_MINUTES, portal: user.role === "CLIENT" ? "client" : "staff" }));
+  const status = await sendMail(user.email, "password-reset-code", passwordResetCode({ name: user.name, code, minutes: OTP_MINUTES }));
 
   // No working e-mail (e.g. SMTP not set up in production): fall back to the team.
   if (status === "FAILED") {
     const autoKey = `password-reset:${user.id}:${new Date().toISOString().slice(0, 10)}`;
     if (!(await db.task.findUnique({ where: { autoKey }, select: { id: true } }))) {
-      const isClient = user.role === "CLIENT";
       await db.task.create({
         data: {
-          title: `Reset ${isClient ? "client portal" : "agent app"} password for ${user.name}`,
-          description: `${user.name} (${user.email}) asked to reset their password but the code e-mail could not be sent. Verify their identity by phone, then set a new password${isClient ? " from the client's “Client portal” card" : " from Users"}.`,
-          type: isClient ? "CLIENT_FOLLOW_UP" : "GENERAL",
+          title: `Reset agent app password for ${user.name}`,
+          description: `${user.name} (${user.email}) asked to reset their password but the code e-mail could not be sent. Verify their identity by phone, then set a new password from Users.`,
+          type: "GENERAL",
           priority: "HIGH",
           dueDate: new Date(now + 4 * 3_600_000),
-          clientId: user.clientId,
-          assigneeId: isClient ? (user.client?.agentId ?? null) : null,
           autoKey,
           events: { create: { type: "CREATED", message: "Created from a “forgot password” request (e-mail delivery failed)" } },
         },
@@ -122,7 +120,7 @@ export async function resetPassword(email: string, token: string, password: stri
     where: { resetTokenHash: tokenHash(token) },
     select: { id: true, consumedAt: true, expiresAt: true, verifiedAt: true, user: { select: { id: true, name: true, email: true, role: true, isActive: true } } },
   });
-  if (!otp || otp.consumedAt || !otp.verifiedAt || otp.expiresAt <= new Date() || !otp.user.isActive || otp.user.email !== email.trim().toLowerCase()) {
+  if (!otp || otp.consumedAt || !otp.verifiedAt || otp.expiresAt <= new Date() || !otp.user.isActive || otp.user.role === "CLIENT" || otp.user.email !== email.trim().toLowerCase()) {
     throw invalid("This reset session has expired. Please request a new code.", { token: ["Expired"] });
   }
   const passwordHash = await hashPassword(password);
@@ -135,7 +133,7 @@ export async function resetPassword(email: string, token: string, password: stri
     });
   });
   await revokeAllSessions(otp.user.id);
-  const loginUrl = otp.user.role === "CLIENT" ? `${CLIENT_APP_URL}/en/login` : `${APP_URL || "http://localhost:3002"}/login`;
+  const loginUrl = `${APP_URL || "http://localhost:3002"}/login`;
   await sendMail(otp.user.email, "password-changed", passwordChanged({ name: otp.user.name, when: formatDateTime(new Date()), loginUrl }));
-  return { reset: true, role: otp.user.role === "CLIENT" ? "client" : "staff" };
+  return { reset: true };
 }
