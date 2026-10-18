@@ -30,7 +30,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
 
   return {
     metadataBase: new URL(
-      process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+      process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
     ),
     title: {
       default: "ELITE Real Estate | Elevating the Way You Live",

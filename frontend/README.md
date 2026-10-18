@@ -16,7 +16,7 @@ npm run dev                    # http://localhost:3001  (start the backend first
 | --- | --- | --- |
 | `NEXT_PUBLIC_API_URL` | `http://localhost:3002/api` | Backend REST API |
 | `NEXT_PUBLIC_CRM_URL` | API origin | Staff CRM (staff are redirected there after login) |
-| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3000` | Canonical URL for SEO metadata |
+| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3001` | Canonical URL for SEO metadata |
 | `NEXT_PUBLIC_BUSINESS_TIMEZONE` | `Asia/Qatar` | Time zone for dates in the portal |
 | `REVALIDATE_SECRET` | — | Server-only. Same value as the agent app's `WEBSITE_REVALIDATE_SECRET`; lets it refresh listings instantly |
 | `API_INTERNAL_URL` | `NEXT_PUBLIC_API_URL` | Server-only. Where the server fetches listings from (e.g. an internal address) |
