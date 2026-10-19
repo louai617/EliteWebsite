@@ -54,6 +54,7 @@ Change these before using real data.
 | `npm test` | Service test-suites (RBAC, validation, commission, hierarchy, imports, tasks, daily reports & rollover, scoring, client isolation, public listings, website bookings, saved homes, recommendations, password reset, lead rules, deals, contracts, documents, reservations, listing media) on a throwaway `test.db` |
 | `npm run db:backup` | Online copy of the SQLite database to `backups/` (do this before migrating) |
 | `npm run import:website-listings` | Import the website's former hard-coded listings (`samples/website-listings.json`); idempotent by reference |
+| `npm run photos:optimize` | Re-encode photos uploaded before the photo pipeline (upright, no metadata, WebP, thumbnails); `-- --dry-run` to preview |
 | `npm run cron:daily` | Run the daily rollover once (for a system cron) |
 | `npm run reports:backfill -- 30` | Finalize daily reports for past days that have none |
 | `npm run db:migrate` | `prisma migrate dev` |
@@ -93,8 +94,7 @@ public values (`frontend/.env.example`).
   stage, lead sources, today's/overdue tasks, upcoming viewings, recent activity and (for
   managers) team performance. Every figure is a live database query.
 - **Properties** — full listing record (specs, location, 12 amenity flags, marketing/SEO),
-  owner link, assigned agent, photo gallery with upload / URL / cover / reorder / remove,
-  status changes, interested leads, viewings, deals, notes and timeline. Table and grid views.
+  owner link, assigned agent, photos (see *Listing photos* below), status changes, interested leads, viewings, deals, notes and timeline. Table and grid views.
 - **Owners** — contact profile, properties owned and their status, active listings, past
   deals, notes, activity.
 - **Leads** — Kanban pipeline (drag & drop, or "Move to" menu for keyboard/touch) and a
@@ -202,7 +202,7 @@ Cookie-authenticated writes must come from an allowed origin (CSRF check); CORS 
 | Users | `GET/POST /users`, `GET/PUT /users/:id` (admins/managers) |
 | Clients | `GET/POST /clients`, `GET/PUT/DELETE /clients/:id` |
 | Leads | `GET/POST /leads`, `GET/PUT/DELETE /leads/:id`, `POST /leads/:id/status`, `POST /leads/:id/assign` |
-| Properties | `GET/POST /properties` (filters incl. `category`, `subcategory`), `GET /properties/categories`, `GET/PATCH/DELETE /properties/:id`, `POST /properties/:id/postings` |
+| Properties | `GET/POST /properties` (filters incl. `category`, `subcategory`), `GET /properties/categories`, `GET/PATCH/DELETE /properties/:id`, `POST /properties/:id/postings`, `POST /properties/:id/photos` (multipart `file`; optimized as above, returns the stored photo and `lowRes`) |
 | Tasks | `GET/POST /tasks` (`scope=mine|team`, filters), `GET/PATCH/DELETE /tasks/:id`, `POST /tasks/:id/notes`, `POST /tasks/:id/assign`, `GET /tasks/workload`, `GET/POST /tasks/daily-templates`, `PUT/DELETE /tasks/daily-templates/:id` |
 | Activities | `GET/POST /activities`, `DELETE /activities/:id` |
 | Reports | `GET /reports?preset=today|yesterday|week|month|custom&from&to&agentId`, `GET /reports/daily?agentId&date`, `POST /reports/daily/submit` |
@@ -241,6 +241,29 @@ All enforced in the service layer (board, menus, forms and API alike):
   receipt) `→ CONFIRMED` (staff verify; property Reserved) or `CANCELLED`; unpaid ones expire
   after `Settings.reservationHoldHours`. Deposit = listing's `bookingDeposit`, else
   `saleDepositPercent` of the price or `rentDepositMonths` of rent.
+
+### Listing photos
+
+Photos are added in the **New property** form (picked first, uploaded right after the listing
+is created) or later with **Manage photos** on the property page: drag & drop, click or paste
+(Ctrl/⌘ V), up to 40 per listing, three uploads at a time with per-photo progress, retry on
+network errors, drag (or arrows) to reorder, ★ to choose the cover.
+
+- **In the browser** (`lib/photo-upload.ts`): photos over 3000 px or 2.5 MB are shrunk to a
+  3000 px JPEG before sending (a 12 MP phone photo goes from ~5–10 MB to ~1–2 MB), and tiles
+  use small previews instead of decoding the originals.
+- **On the server** (`services/photos.ts`, sharp/libvips): the bytes are sniffed (JPG, PNG,
+  WebP, AVIF; HEIC gets a "use JPG" message; SVG and anything else are refused), corrupt files
+  and >100 MP images are rejected, then every photo is rotated upright, converted to sRGB,
+  **stripped of all metadata (EXIF, GPS location, camera serials)**, capped at 2560 px and saved
+  as WebP (q82), plus a 640 px thumbnail and a ~150-byte blurred preview. Width, height, size
+  and a SHA-256 are stored: the same photo can't be added twice, photos under 480 px are
+  refused and under 1600 px are flagged *Low res*.
+- **Delivery**: CRM lists use the thumbnails; the website gets the blurred preview
+  (`cover_blur`, `image_blurs`) and serves AVIF/WebP at the right size through Next's image
+  optimizer. Removing a photo or a listing deletes its files.
+- Photos uploaded before this existed: `npm run photos:optimize` (add `-- --dry-run` to preview)
+  re-encodes them the same way. Photos pasted as URLs are left as they are.
 
 ### Listing media
 
@@ -379,7 +402,7 @@ filtered/sorted column. Money is stored in whole QAR (`Int`).
 ## Known limitations
 
 - Photo uploads are stored on local disk (`storage/uploads`, served via
-  `/api/uploads/...` to signed-in users). Use object storage (S3/R2) before running several
+  `/api/uploads/...`; public only while the listing is live on the website). Use object storage (S3/R2) before running several
   instances; `src/services/storage.ts` is the only file to change.
 - The login rate limiter is in-memory (per process).
 - E-mail needs an SMTP account (`SMTP_*`). Until it is set, production password resets fall back

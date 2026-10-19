@@ -42,7 +42,7 @@ import { RecordActions } from "@/components/shared/record-actions";
 import { PostingButton } from "@/components/properties/posting-button";
 import { DeleteRecordButton } from "@/components/shared/delete-record-button";
 import { PropertyGallery } from "@/components/properties/property-gallery";
-import { ImageManager } from "@/components/properties/image-manager";
+import { PhotosButton } from "@/components/properties/photo-uploader";
 import { MediaManager } from "@/components/properties/media-manager";
 import { listMedia } from "@/services/property-media";
 import { PropertyStatusMenu } from "@/components/properties/property-status-menu";
@@ -175,7 +175,7 @@ export default async function PropertyPage({ params }: PageProps<"/properties/[i
             <PropertyGallery images={property.images} title={property.title} />
             {property.canEdit && (
               <div className="flex justify-end">
-                <ImageManager propertyId={property.id} images={property.images} />
+                <PhotosButton propertyId={property.id} images={property.images} />
               </div>
             )}
           </div>

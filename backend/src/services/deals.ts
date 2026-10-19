@@ -93,7 +93,7 @@ export async function getDeal(actor: Actor, id: string) {
       property: {
         select: {
           id: true, reference: true, title: true, area: true, status: true, price: true, currency: true, purpose: true, agentId: true,
-          images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 1, select: { url: true } },
+          images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 1, select: { url: true, thumbUrl: true } },
         },
       },
       client: { select: { id: true, fullName: true, phone: true, email: true, clientType: true } },

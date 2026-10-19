@@ -5,7 +5,7 @@ import { ChevronLeft, ChevronRight, Images } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { PropertyImage } from "@/components/shared/property-image";
 
-export function PropertyGallery({ images, title }: { images: { id: string; url: string; isPrimary: boolean }[]; title: string }) {
+export function PropertyGallery({ images, title }: { images: { id: string; url: string; thumbUrl?: string | null; blurDataUrl?: string | null; isPrimary: boolean }[]; title: string }) {
   const ordered = [...images.filter((i) => i.isPrimary), ...images.filter((i) => !i.isPrimary)];
   const [index, setIndex] = useState(0);
   const current = ordered[index];
@@ -24,7 +24,7 @@ export function PropertyGallery({ images, title }: { images: { id: string; url: 
   return (
     <div className="space-y-2">
       <div className="group relative overflow-hidden rounded-lg border bg-card">
-        <PropertyImage key={current.id} src={current.url} alt={`${title} — photo ${index + 1}`} className="aspect-[16/9] w-full" iconClassName="size-8" />
+        <PropertyImage key={current.id} src={current.url} blur={current.blurDataUrl} eager alt={`${title} — photo ${index + 1}`} className="aspect-[16/9] w-full" iconClassName="size-8" />
         {ordered.length > 1 && (
           <>
             <button type="button" onClick={() => go(-1)} className="absolute top-1/2 left-3 flex size-9 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-foreground shadow opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100" aria-label="Previous photo">
@@ -50,7 +50,7 @@ export function PropertyGallery({ images, title }: { images: { id: string; url: 
               aria-label={`Show photo ${i + 1}`}
               aria-current={i === index}
             >
-              <PropertyImage src={img.url} alt="" className="h-14 w-20" iconClassName="size-3.5" />
+              <PropertyImage src={img.thumbUrl ?? img.url} alt="" className="h-14 w-20" iconClassName="size-3.5" />
             </button>
           ))}
         </div>

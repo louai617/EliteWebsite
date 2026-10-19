@@ -77,6 +77,9 @@ the old deal statuses: *Negotiation / Contract pending / Contract signed* → **
 *Closed won* → **Closed**, *Closed lost* → **Cancelled**. The 24-hour clock for existing leads
 starts when you run the migration, so nothing is moved to the admin straight away.
 
+Photos uploaded before the photo optimization update can be optimized once with
+`npm run photos:optimize` (in `backend/`; `-- --dry-run` shows what it would do first).
+
 The `guest_reservations` migration (website without visitor accounts) only adds columns to
 reservations; every existing reservation, client and client-portal user is kept. Those old
 client accounts simply can't sign in any more.
@@ -126,9 +129,13 @@ accounts — change them before real use.
 - **Imports**: upload `backend/samples/property-finder.sample.json` or `qatar-living.sample.json`. Keep "Dry run" ticked to preview, untick it to import.
 
 **Agent posts, website shows it (:3002 → :3001)**
-- **Properties → New property**: fill it in, keep **Show on website** on in the *Website*
+- **Properties → New property**: fill it in and drop your photos in the **Photos** section
+  (drag to reorder, ★ for the cover; they're shrunk in the browser and optimized on the server:
+  straightened, location data removed, WebP). Keep **Show on website** on in the *Website*
   section (also: Exclusive, Verified, Arabic title, completion, payment plan, nearby places).
   Save, then open http://localhost:3001/en/properties — it is there.
+- On a property, **Manage photos** adds more (drag & drop, click or paste), reorders them,
+  changes the cover or removes them.
 - Change its price, untick **Show on website**, or mark it *Sold*: the website follows.
 - **Videos, tours & floor plans** card on a property: paste a YouTube / Vimeo link or upload a
   video (MP4, MOV, WebM up to 200 MB), add a 360° tour (Matterport, Kuula or any link), upload
@@ -199,6 +206,7 @@ accounts — change them before real use.
 | --- | --- |
 | `npm test` | Runs all service tests on a separate test database (your data is not touched) |
 | `npm run import:website-listings` | Adds the website's original listings to the CRM (skips existing ones) |
+| `npm run photos:optimize` | Optimizes photos uploaded before the photo update (WebP, thumbnails, no location data) |
 | `npm run db:backup` | Copies the database to `backend/backups/` |
 | `npm run cron:daily` | Runs the end-of-day rollover by hand |
 | `npm run db:studio` | Opens a database browser |

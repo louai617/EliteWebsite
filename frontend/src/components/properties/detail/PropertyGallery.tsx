@@ -7,6 +7,8 @@ import { X, ChevronLeft, ChevronRight, Expand, Camera, Box, PlayCircle } from 'l
 
 interface PropertyGalleryProps {
   images: string[];
+  /** Blurred previews for the first photos (from the agent app), shown while they load. */
+  blurs?: (string | null)[];
   title: string;
   /** Show "Video" / "360° tour" shortcuts to the media section. */
   hasVideo?: boolean;
@@ -20,7 +22,8 @@ interface PropertyGalleryProps {
  * is parked on the dialog so screen readers announce it. Arrow direction flips
  * under RTL so "next" always means "forward" visually.
  */
-export default function PropertyGallery({ images, title, hasVideo = false, hasTour = false }: PropertyGalleryProps) {
+export default function PropertyGallery({ images, blurs = [], title, hasVideo = false, hasTour = false }: PropertyGalleryProps) {
+  const blur = (i: number) => (blurs[i] ? { placeholder: 'blur' as const, blurDataURL: blurs[i]! } : {});
   const t = useTranslations('property');
   const tMedia = useTranslations('media');
   const locale = useLocale();
@@ -92,6 +95,7 @@ export default function PropertyGallery({ images, title, hasVideo = false, hasTo
             alt={title}
             fill
             priority
+            {...blur(0)}
             sizes="(max-width: 768px) 100vw, 50vw"
             className="object-cover transition-transform duration-700 group-hover:scale-[1.04]"
           />
@@ -111,6 +115,7 @@ export default function PropertyGallery({ images, title, hasVideo = false, hasTo
               alt={`${title} — ${index + 2}`}
               fill
               sizes="25vw"
+              {...blur(index + 1)}
               className="object-cover transition-transform duration-700 group-hover:scale-[1.06]"
             />
           </button>

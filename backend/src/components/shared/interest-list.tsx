@@ -23,7 +23,7 @@ export interface InterestProperty {
   price: number;
   currency: string;
   purpose: ListingPurpose;
-  images: { url: string }[];
+  images: { url: string; thumbUrl?: string | null }[];
 }
 
 /** Properties a lead/client is interested in, with add/remove. */
@@ -51,7 +51,7 @@ export function InterestList<K extends "leadId" | "clientId">({
       <ul className="divide-y">
         {properties.map((p) => (
           <li key={p.id} className="flex items-center gap-3 py-2.5 first:pt-0">
-            <PropertyImage src={p.images[0]?.url} alt="" className="h-10 w-14 shrink-0 rounded" iconClassName="size-3.5" />
+            <PropertyImage src={p.images[0]?.thumbUrl ?? p.images[0]?.url} alt="" className="h-10 w-14 shrink-0 rounded" iconClassName="size-3.5" />
             <div className="min-w-0 flex-1">
               <Link href={`/properties/${p.id}`} className="line-clamp-1 text-sm font-medium hover:underline">
                 {p.title}

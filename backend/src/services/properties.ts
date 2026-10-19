@@ -14,7 +14,8 @@ import { logActivity } from "./activity";
 import { onPropertyCreated } from "./automation";
 import { assertActiveUser, assertCanAccess } from "./access";
 import { nextReference } from "./references";
-import { deleteMediaFile, deleteUpload } from "./storage";
+import { PHOTO_RULES, processPhoto, removeStoredPhoto, storePhoto, type StoredPhoto } from "./photos";
+import { deleteMediaFile } from "./storage";
 import { notifyWebsite } from "./website-sync";
 import { recordWorkActivity } from "./work-activities";
 import type { Tx } from "./types";
@@ -98,7 +99,7 @@ const listSelect = {
   agentId: true,
   agent: { select: { id: true, name: true, avatarUrl: true } },
   owner: { select: { id: true, fullName: true } },
-  images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 1, select: { url: true } },
+  images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 1, select: { url: true, thumbUrl: true } },
   _count: { select: { viewings: true, interests: true } },
 } satisfies Prisma.PropertySelect;
 
@@ -111,7 +112,7 @@ export async function listProperties(actor: Actor, params: ListParams<(typeof PR
   // Agents see which owner a listing belongs to only for their own listings.
   const items = rows.map(({ images, ...row }) => ({
     ...row,
-    imageUrl: images[0]?.url ?? null,
+    imageUrl: images[0]?.thumbUrl ?? images[0]?.url ?? null,
     owner: canSeeOwnerContact(actor, row) ? row.owner : null,
   }));
   return paginate(items, total, params.page, params.pageSize);
@@ -313,7 +314,7 @@ export async function deleteProperty(actor: Actor, id: string) {
   if (!can.deleteRecords(actor)) throw forbidden("Only managers can delete properties.");
   const property = await db.property.findUnique({
     where: { id },
-    select: { reference: true, title: true, images: { select: { url: true } }, media: { select: { storageKey: true } }, _count: { select: { deals: true } } },
+    select: { reference: true, title: true, images: { select: { url: true, thumbUrl: true } }, media: { select: { storageKey: true } }, _count: { select: { deals: true } } },
   });
   if (!property) throw notFound("Property");
   if (property._count.deals > 0) {
@@ -326,7 +327,7 @@ export async function deleteProperty(actor: Actor, id: string) {
       description: `Deleted ${property.reference} — ${property.title}`, userId: actor.id,
     });
   });
-  await Promise.all(property.images.map((img) => deleteUpload(img.url)));
+  await removeStoredPhoto(property.images.flatMap((img) => [img.url, img.thumbUrl]));
   await Promise.all(property.media.map((m) => (m.storageKey ? deleteMediaFile(m.storageKey) : undefined)));
   notifyWebsite();
 }
@@ -340,13 +341,19 @@ export async function editableProperty(actor: Actor, propertyId: string) {
   return property;
 }
 
-export async function addPropertyImage(actor: Actor, propertyId: string, url: string) {
+type PhotoMeta = Omit<StoredPhoto, "url" | "lowRes">;
+
+export async function addPropertyImage(actor: Actor, propertyId: string, url: string, meta?: PhotoMeta) {
   const property = await editableProperty(actor, propertyId);
   return db.$transaction(async (tx) => {
     const count = await tx.propertyImage.count({ where: { propertyId } });
-    if (count >= 40) throw invalid("A listing can have at most 40 photos.");
+    if (count >= PHOTO_RULES.maxPhotos) throw invalid(`A listing can have at most ${PHOTO_RULES.maxPhotos} photos.`);
     const last = await tx.propertyImage.findFirst({ where: { propertyId }, orderBy: { sortOrder: "desc" }, select: { sortOrder: true } });
-    const image = await tx.propertyImage.create({ data: { propertyId, url, sortOrder: (last?.sortOrder ?? -1) + 1, isPrimary: count === 0 } });
+    const hasCover = await tx.propertyImage.count({ where: { propertyId, isPrimary: true } });
+    const image = await tx.propertyImage.create({
+      data: { propertyId, url, ...meta, sortOrder: (last?.sortOrder ?? -1) + 1, isPrimary: hasCover === 0 },
+      select: { id: true, url: true, thumbUrl: true, width: true, height: true, bytes: true, isPrimary: true, sortOrder: true },
+    });
     await logActivity(tx, {
       action: "IMAGE_ADDED", entityType: "PROPERTY", entityId: propertyId, entityLabel: `${property.reference} · ${property.title}`,
       description: `Added a photo to ${property.reference}`, userId: actor.id, propertyId,
@@ -355,8 +362,32 @@ export async function addPropertyImage(actor: Actor, propertyId: string, url: st
   }).finally(notifyWebsite);
 }
 
+/**
+ * Uploads one photo: checks access and the 40-photo limit before any work, then optimizes it
+ * (services/photos.ts), refuses an exact duplicate on the same listing and records it.
+ */
+export async function uploadPropertyPhoto(actor: Actor, propertyId: string, file: File) {
+  await editableProperty(actor, propertyId);
+  if ((await db.propertyImage.count({ where: { propertyId } })) >= PHOTO_RULES.maxPhotos) {
+    throw invalid(`A listing can have at most ${PHOTO_RULES.maxPhotos} photos.`);
+  }
+  if (file.size > PHOTO_RULES.maxBytes) throw invalid("Photos must be 10 MB or smaller.", { file: ["Max 10 MB"] });
+  const photo = await processPhoto(Buffer.from(await file.arrayBuffer()));
+  if (await db.propertyImage.findFirst({ where: { propertyId, checksum: photo.checksum }, select: { id: true } })) {
+    throw conflict("This photo is already in the listing.");
+  }
+  const { lowRes, ...stored } = await storePhoto(propertyId, photo);
+  try {
+    const image = await addPropertyImage(actor, propertyId, stored.url, stored);
+    return { ...image, lowRes };
+  } catch (error) {
+    await removeStoredPhoto([stored.url, stored.thumbUrl]);
+    throw error;
+  }
+}
+
 export async function removePropertyImage(actor: Actor, imageId: string) {
-  const image = await db.propertyImage.findUnique({ where: { id: imageId }, select: { id: true, propertyId: true, isPrimary: true, url: true } });
+  const image = await db.propertyImage.findUnique({ where: { id: imageId }, select: { id: true, propertyId: true, isPrimary: true, url: true, thumbUrl: true } });
   if (!image) throw notFound("Photo");
   await editableProperty(actor, image.propertyId);
   await db.$transaction(async (tx) => {
@@ -366,7 +397,7 @@ export async function removePropertyImage(actor: Actor, imageId: string) {
       if (next) await tx.propertyImage.update({ where: { id: next.id }, data: { isPrimary: true } });
     }
   });
-  await deleteUpload(image.url);
+  await removeStoredPhoto([image.url, image.thumbUrl]);
   notifyWebsite();
 }
 

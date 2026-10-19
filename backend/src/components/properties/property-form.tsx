@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import { toast } from "sonner";
 import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { createPropertyAction, updatePropertyAction } from "@/actions/properties";
@@ -21,6 +22,7 @@ import {
 import { propertySchema, type PropertyInput, type PropertyValues } from "@/schemas/property";
 import { toDateInput } from "@/lib/format";
 import { WebsiteSection } from "./website-fields";
+import { StagedPhotos, uploadStagedPhotos, type StagedPhoto } from "./photo-uploader";
 import type { AgentOption, Viewer } from "@/types/options";
 import type { LookupOption } from "@/types/search";
 import { Button } from "@/components/ui/button";
@@ -158,16 +160,26 @@ export function PropertyForm({
   }, [allowedTypes, form]);
   const areaOptions = Array.from(new Set([...QATAR_AREAS, ...areas])).sort();
 
+  // New listings: photos are picked in the form and uploaded right after the listing is created.
+  const [photos, setPhotos] = useState<StagedPhoto[]>([]);
+  const [photoProgress, setPhotoProgress] = useState<{ done: number; total: number } | null>(null);
+
   const onSubmit = useFormAction(
     form,
     (values: PropertyValues) => (propertyId ? updatePropertyAction({ ...values, id: propertyId }) : createPropertyAction(values)),
     {
-      onSuccess: (data) => {
+      onSuccess: async (data) => {
         const id = (data as { id: string }).id;
+        if (!propertyId && photos.length) {
+          const failed = await uploadStagedPhotos(id, photos, (done, total) => setPhotoProgress({ done, total }));
+          if (failed.length) toast.error(`${failed.length} photo${failed.length === 1 ? "" : "s"} couldn't be uploaded — add ${failed.length === 1 ? "it" : "them"} again from the listing.`, { description: failed.slice(0, 3).join("\n") });
+          else toast.success(`${photos.length} photo${photos.length === 1 ? "" : "s"} uploaded`);
+        }
         router.push(`/properties/${id}`);
       },
     },
   );
+  const saving = form.formState.isSubmitting || photoProgress !== null;
 
   return (
     <Form {...form}>
@@ -192,6 +204,12 @@ export function PropertyForm({
               <TextField control={form.control} name="currency" label="Currency" maxLength={3} />
             </div>
           </FormSection>
+
+          {!propertyId && (
+            <FormSection title="Photos" description="Add them now or later. They're optimized automatically: straightened, location data removed, resized and compressed.">
+              <StagedPhotos value={photos} onChange={setPhotos} disabled={saving} />
+            </FormSection>
+          )}
 
           <FormSection title="Specifications">
             <TextField control={form.control} name="areaSqm" label="Size (sqm)" inputMode="decimal" />
@@ -245,11 +263,16 @@ export function PropertyForm({
         </div>
 
         <div className="sticky bottom-0 -mx-3 flex justify-end gap-2 border-t bg-background/95 px-3 py-3 backdrop-blur sm:-mx-5 sm:px-5 lg:-mx-7 lg:px-7">
-          <Button type="button" variant="outline" onClick={() => router.back()} disabled={form.formState.isSubmitting}>
+          {photoProgress && (
+            <p className="mr-auto flex items-center text-sm text-muted-foreground" role="status">
+              Uploading photos {photoProgress.done} of {photoProgress.total}…
+            </p>
+          )}
+          <Button type="button" variant="outline" onClick={() => router.back()} disabled={saving}>
             Cancel
           </Button>
-          <Button type="submit" loading={form.formState.isSubmitting}>
-            {propertyId ? "Save changes" : "Create property"}
+          <Button type="submit" loading={saving}>
+            {propertyId ? "Save changes" : photos.length ? `Create property with ${photos.length} photo${photos.length === 1 ? "" : "s"}` : "Create property"}
           </Button>
         </div>
       </form>

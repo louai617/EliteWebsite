@@ -102,7 +102,7 @@ export default async function OwnerPage({ params }: PageProps<"/owners/[id]">) {
                     <TableRow key={p.id}>
                       <TableCell>
                         <Link href={`/properties/${p.id}`} className="flex items-center gap-3 hover:underline">
-                          <PropertyImage src={p.images[0]?.url} alt="" className="h-9 w-12 shrink-0 rounded" iconClassName="size-3.5" />
+                          <PropertyImage src={p.images[0]?.thumbUrl ?? p.images[0]?.url} alt="" className="h-9 w-12 shrink-0 rounded" iconClassName="size-3.5" />
                           <span className="min-w-0">
                             <span className="line-clamp-1 font-medium">{p.title}</span>
                             <span className="text-xs text-muted-foreground">{p.reference} · {p.area}</span>

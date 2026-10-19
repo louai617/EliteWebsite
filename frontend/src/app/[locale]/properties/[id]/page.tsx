@@ -216,7 +216,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
           <span className="truncate font-medium text-gray-600">{area}</span>
         </nav>
 
-        <PropertyGallery images={property.images} title={title} hasVideo={Boolean(media?.videos.length)} hasTour={Boolean(media?.tours.length)} />
+        <PropertyGallery images={property.images} blurs={property.image_blurs} title={title} hasVideo={Boolean(media?.videos.length)} hasTour={Boolean(media?.tours.length)} />
 
         {/* Headline block */}
         <header className="mt-8 flex flex-col gap-6 lg:flex-row lg:items-start lg:justify-between">

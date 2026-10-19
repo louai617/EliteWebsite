@@ -118,7 +118,7 @@ export async function getLead(actor: Actor, id: string) {
           property: {
             select: {
               id: true, reference: true, title: true, area: true, status: true, price: true, currency: true, purpose: true, bedrooms: true,
-              images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 1, select: { url: true } },
+              images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 1, select: { url: true, thumbUrl: true } },
             },
           },
         },

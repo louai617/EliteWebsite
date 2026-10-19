@@ -48,6 +48,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ property, footer }) => {
             alt={title}
             fill
             sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw"
+            {...(property.cover_blur ? { placeholder: 'blur' as const, blurDataURL: property.cover_blur } : {})}
             className="object-cover transition-transform duration-500 group-hover:scale-105"
           />
         ) : (

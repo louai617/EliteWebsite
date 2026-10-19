@@ -59,7 +59,7 @@ const cardSelect = {
   completionStatus: true,
   websitePublishedAt: true,
   createdAt: true,
-  images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 6, select: { url: true } },
+  images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 6, select: { url: true, blurDataUrl: true } },
   media: { select: { kind: true } },
 } satisfies Prisma.PropertySelect;
 
@@ -99,7 +99,7 @@ const detailSelect = {
   hasInternet: true,
   billsIncluded: true,
   agent: { select: { id: true, name: true, role: true, phone: true, email: true, avatarUrl: true } },
-  images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 40, select: { url: true } },
+  images: { orderBy: [{ isPrimary: "desc" }, { sortOrder: "asc" }], take: 40, select: { url: true, blurDataUrl: true } },
 } satisfies Prisma.PropertySelect;
 
 type CardRow = Prisma.PropertyGetPayload<{ select: typeof cardSelect }>;
@@ -154,6 +154,8 @@ function toCard(p: CardRow, origin: string) {
       community_ar: ar(p.buildingName) || ar(p.area),
     },
     images: p.images.map((i) => absolute(i.url, origin)),
+    /** Tiny blurred preview of the cover photo (data: URL) shown while it loads; null for older photos. */
+    cover_blur: p.images[0]?.blurDataUrl ?? null,
     is_featured: p.isFeatured,
     is_verified: p.isVerified,
     is_exclusive: p.isExclusive,
@@ -333,6 +335,8 @@ export async function getPublicListing(ref: string, origin: string) {
   return {
     ...toCard(p, origin),
     id: p.id,
+    /** Blurred previews for the first 5 photos (the gallery's hero grid); null after that. */
+    image_blurs: p.images.map((i, n) => (n < 5 ? i.blurDataUrl : null)),
     description_en: p.description ?? "",
     description_ar: p.descriptionAr || p.description || "",
     floor: p.floor,

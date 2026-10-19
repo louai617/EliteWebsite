@@ -19,7 +19,8 @@
     "db:backup": "node scripts/backup-db.mjs",
     "cron:daily": "node --conditions=react-server --import tsx scripts/daily-rollover.ts",
     "reports:backfill": "node --conditions=react-server --import tsx scripts/backfill-reports.ts",
-    "import:website-listings": "tsx scripts/import-website-listings.ts"
+    "import:website-listings": "tsx scripts/import-website-listings.ts",
+    "photos:optimize": "node --conditions=react-server --import tsx scripts/optimize-photos.ts"
   },
   "dependencies": {
     "@date-fns/tz": "^1.5.0",
@@ -43,6 +44,7 @@
     "react-hook-form": "^7.89.0",
     "recharts": "^3.10.1",
     "server-only": "^0.0.1",
+    "sharp": "^0.35.5",
     "sonner": "^2.0.8",
     "tailwind-merge": "^3.7.0",
     "zod": "^4.6.5"

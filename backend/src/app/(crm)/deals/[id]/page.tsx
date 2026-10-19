@@ -156,7 +156,7 @@ export default async function DealPage({ params }: PageProps<"/deals/[id]">) {
               </CardHeader>
               <CardContent>
                 <Link href={`/properties/${deal.property.id}`} className="flex items-center gap-3 hover:underline">
-                  <PropertyImage src={deal.property.images[0]?.url} alt="" className="h-14 w-20 shrink-0 rounded-md" />
+                  <PropertyImage src={deal.property.images[0]?.thumbUrl ?? deal.property.images[0]?.url} alt="" className="h-14 w-20 shrink-0 rounded-md" />
                   <span className="min-w-0">
                     <span className="line-clamp-2 text-sm font-medium">{deal.property.title}</span>
                     <span className="text-xs text-muted-foreground">

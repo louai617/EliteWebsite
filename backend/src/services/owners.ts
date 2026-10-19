@@ -57,7 +57,7 @@ export async function getOwner(actor: Actor, id: string) {
         orderBy: { updatedAt: "desc" },
         select: {
           id: true, reference: true, title: true, status: true, purpose: true, price: true, currency: true, area: true, agentId: true,
-          images: { where: { isPrimary: true }, take: 1, select: { url: true } },
+          images: { where: { isPrimary: true }, take: 1, select: { url: true, thumbUrl: true } },
         },
       },
       deals: {

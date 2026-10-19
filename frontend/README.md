@@ -41,6 +41,10 @@ use their CRM accounts.
   `GET /public/properties/:ref`, cached with the `listings` tag for 60 s. Home, `/properties`
   (filters, sorting and pages in the URL) and `/properties/[ref]` render from it; there is no
   static listing data in this app any more.
+- Photos are served through `next/image` (AVIF, then WebP, sized per screen; optimized copies
+  cached for a day) with the blurred previews from the agent app (`cover_blur`,
+  `image_blurs`) as placeholders while they load. In production the agent app must be on a
+  public address (Next refuses to optimize images from private IPs such as `localhost`).
 - `POST /api/revalidate` (Bearer `REVALIDATE_SECRET`, constant-time compare) is called by the
   agent app whenever a property changes and expires the `listings` tag immediately.
 - If the agent app is unreachable the pages show a friendly error/empty state instead of

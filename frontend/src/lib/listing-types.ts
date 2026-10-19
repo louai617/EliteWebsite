@@ -58,6 +58,8 @@ export interface ListingCard {
   completion: 'ready' | 'offplan';
   location: { city_en: string; city_ar: string; area_en: string; area_ar: string; community_en: string; community_ar: string };
   images: string[];
+  /** Tiny blurred preview of the cover photo (data: URL), shown while it loads. */
+  cover_blur?: string | null;
   is_featured: boolean;
   is_verified: boolean;
   is_exclusive: boolean;
@@ -87,6 +89,8 @@ export interface ListingMedia {
 
 export interface Listing extends ListingCard {
   id: string;
+  /** Blurred previews for the first 5 photos (null after that or for older photos). */
+  image_blurs?: (string | null)[];
   description_en: string;
   description_ar: string;
   floor: number | null;

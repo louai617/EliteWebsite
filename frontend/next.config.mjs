@@ -12,6 +12,10 @@ const nextConfig = {
     root: import.meta.dirname,
   },
   images: {
+    // AVIF first (about 20–30% smaller than WebP), WebP for browsers without AVIF.
+    formats: ['image/avif', 'image/webp'],
+    // Keep optimized copies for a day (default 4 h); a removed photo still drops off within a day.
+    minimumCacheTTL: 60 * 60 * 24,
     remotePatterns: [
       { protocol: 'https', hostname: 'images.unsplash.com' },
       { protocol: 'https', hostname: 'res.cloudinary.com' },

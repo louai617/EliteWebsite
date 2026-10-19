@@ -520,16 +520,27 @@ model Property {
 }
 
 model PropertyImage {
-  id         String   @id @default(cuid())
-  propertyId String
-  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  id          String   @id @default(cuid())
+  propertyId  String
+  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   /// Absolute URL or an app path such as /api/uploads/properties/<id>/<file>.
-  url        String
-  sortOrder  Int      @default(0)
-  isPrimary  Boolean  @default(false)
-  createdAt  DateTime @default(now())
+  url         String
+  /// 640 px WebP for lists and thumbnails (uploads only; null for pasted URLs and older uploads).
+  thumbUrl    String?
+  /// Pixel size and file size of `url` (uploads only).
+  width       Int?
+  height      Int?
+  bytes       Int?
+  /// Tiny blurred preview (data: URL, ~300 bytes) shown while the photo loads.
+  blurDataUrl String?
+  /// SHA-256 of the original upload, to refuse the same photo twice on one listing.
+  checksum    String?
+  sortOrder   Int      @default(0)
+  isPrimary   Boolean  @default(false)
+  createdAt   DateTime @default(now())
 
   @@index([propertyId, sortOrder])
+  @@index([propertyId, checksum])
 }
 
 /// Videos, 360° tours, floor plans and brochures. Either an external link (YouTube, Vimeo,
