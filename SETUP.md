@@ -270,6 +270,7 @@ the website's only secret, `REVALIDATE_SECRET`, is server-only and never reaches
 | --- | --- |
 | "Invalid email or password" with the demo logins | Run `npx prisma db seed` in `backend/` (creates the accounts) and sign in at http://localhost:3002/login. Old client-portal accounts can no longer sign in. |
 | Website says it can't reach the server | Start the backend first and check `NEXT_PUBLIC_API_URL` in `frontend/.env.local`. Restart `npm run dev` after editing `.env.local`. |
+| `Unknown field … for select statement` / `The column … does not exist` after pulling | The database code is out of date. Stop the agent app and start it again with `npm run dev` (it now regenerates the Prisma client and applies new migrations first), or run `npx prisma generate && npx prisma migrate deploy`. |
 | `Port 3001/3002 is already in use` | Stop the other process (an older `npm run dev`) or restart the terminal. |
 | `PrismaConfigEnvError` / missing env during install | Make sure `backend/.env` exists (`cp .env.example .env`), then `npm install` again. |
 | Seed fails with a table/column error | Run `npx prisma migrate deploy` (or `npx prisma migrate dev`) first, then the seed. |

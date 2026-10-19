@@ -18,6 +18,7 @@ cp .env.example .env        # then set SESSION_SECRET (openssl rand -base64 32)
 npx prisma migrate dev      # creates ./dev.db and applies migrations
 npx prisma db seed          # realistic Doha demo data (wipes CRM tables first)
 npm run dev                 # http://localhost:3002/login  (CRM + REST API at /api)
+                            # (dev/build regenerate the Prisma client; dev also applies new migrations)
 ```
 
 `DATABASE_URL` defaults to `file:./dev.db`, so `npm install` and the Prisma commands also work
