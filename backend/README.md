@@ -65,7 +65,7 @@ moved to `backups/demo-files-<time>/`.
 | `npm run dev` / `build` / `start` | Next.js |
 | `npm run typecheck` / `lint` | `next typegen && tsc`, ESLint |
 | `npm test` | Service test-suites (RBAC, validation, commission, hierarchy, imports, tasks, daily reports & rollover, scoring, client isolation, public listings, website bookings, saved homes, recommendations, password reset, lead rules, deals, contracts, documents, reservations, listing media, photo pipeline, watermark, clearing demo data) on a throwaway `test.db` with the demo seed |
-| `npm run db:backup` | Online copy of the SQLite database to `backups/` (do this before migrating) |
+| `npm run db:backup` | Online copy of the SQLite database to `backups/` (do this before migrating); `node scripts/backup-db.mjs <file>` for a chosen file |
 | `npm run import:website-listings` | Import the website's former hard-coded listings (`samples/website-listings.json`); idempotent by reference |
 | `npm run db:sync` | Regenerate the Prisma client if the schema changed and apply pending migrations (runs automatically in development) |
 | `npm run photos:watermark` | Bring every uploaded photo up to date at once: keep a clean original of older photos, (re)make the watermarked public copies (also runs by itself in the background); `-- --dry-run` to count. `photos:optimize` is the same command |
@@ -75,6 +75,7 @@ moved to `backups/demo-files-<time>/`.
 | `npm run db:deploy` | `prisma migrate deploy` (production) |
 | `npm run db:seed` | Seed the admin account (`SEED_DEMO=1` for demo data) |
 | `npm run db:clear-demo` | Remove all demo data, keep the admin account and settings (`-- --yes` to apply) |
+| `npm run admin:create` | Create an admin account, or make an account an active admin with a new password (safe on a live database; `-- --if-missing` skips when one exists) |
 | `npm run db:reset` | Drop, re-migrate and re-seed the dev database |
 | `npm run db:studio` | Prisma Studio |
 

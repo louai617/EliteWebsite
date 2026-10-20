@@ -3,6 +3,7 @@
  * (migrations, imports). Uses SQLite's online backup API, so it is safe while the app runs.
  *
  *   npm run db:backup
+ *   node scripts/backup-db.mjs /path/to/copy.db   (a chosen file, e.g. from the daily backup)
  */
 import "dotenv/config";
 import { mkdirSync, existsSync } from "node:fs";
@@ -19,10 +20,9 @@ if (!existsSync(file)) {
   console.log(`No database at ${file} — nothing to back up.`);
   process.exit(0);
 }
-const dir = path.resolve("backups");
-mkdirSync(dir, { recursive: true });
 const stamp = new Date().toISOString().replace(/[:.]/g, "-");
-const target = path.join(dir, `${path.basename(file, ".db")}-${stamp}.db`);
+const target = process.argv[2] ? path.resolve(process.argv[2]) : path.join(path.resolve("backups"), `${path.basename(file, ".db")}-${stamp}.db`);
+mkdirSync(path.dirname(target), { recursive: true });
 const db = new Database(file, { readonly: true });
 await db.backup(target);
 db.close();

@@ -255,6 +255,10 @@ Every variable is explained in `backend/.env.example` and `frontend/.env.example
 
 ## 9. Going live: eliterealestate.qa and app.eliterealestate.qa
 
+**On a Hostinger VPS, follow [`HOSTING.md`](HOSTING.md)**: one script sets up the server, writes
+the settings below for you and deploys both apps; `elite update` deploys new versions. The rest of
+this section is for running the apps on another server by hand.
+
 Run each app with `npm run build && npm start` behind HTTPS (in `backend/`, apply migrations
 first with `npm run db:deploy`). Point DNS for `eliterealestate.qa` (and `www`) to the
 website and `app.eliterealestate.qa` to the agent app.
@@ -283,6 +287,10 @@ NEXT_PUBLIC_SITE_URL=https://eliterealestate.qa
 REVALIDATE_SECRET=<same value as WEBSITE_REVALIDATE_SECRET>
 # API_INTERNAL_URL=http://127.0.0.1:3002/api   # optional, if both run on one server
 ```
+
+Behind a reverse proxy (nginx), pass the visitor's host and scheme (`Host`,
+`X-Forwarded-Proto`) and set `X-Forwarded-For` to the visitor's address (not appended): the apps
+use them for same-origin checks and sign-in rate limits (see `deploy/nginx/`).
 
 Leave `SESSION_COOKIE_DOMAIN` unset: the login cookie then stays on app.eliterealestate.qa
 only (the website has no accounts and never needs it). Secrets stay in the agent app's `.env`;

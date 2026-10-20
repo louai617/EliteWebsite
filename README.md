@@ -33,6 +33,7 @@ in **Users**. For a demo team with sample listings and history: `SEED_DEMO=1 npx
 a database that has the demo data: `npm run db:clear-demo` in `backend/` (see SETUP.md).
 
 Step-by-step instructions, production domains and troubleshooting: [`SETUP.md`](SETUP.md).
+Putting it online on a Hostinger VPS: [`HOSTING.md`](HOSTING.md) (scripts in `deploy/`).
 
 Development login (created by the seed) — change its password, e-mail and name before using real data. The
 website's **Agent portal** button opens http://localhost:3002/login; only staff accounts can sign in.

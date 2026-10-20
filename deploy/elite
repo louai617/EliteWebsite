@@ -1,0 +1,85 @@
+#!/usr/bin/env bash
+#
+# Server commands for ELITE Real Estate (installed by deploy/setup.sh as /usr/local/bin/elite).
+#
+set -euo pipefail
+
+ELITE_HOME=${ELITE_HOME:-/opt/elite}
+ELITE_USER=${ELITE_USER:-elite}
+CONF=$ELITE_HOME/shared/deploy.env
+# shellcheck source=/dev/null
+[ -f "$CONF" ] && . "$CONF"
+
+usage() {
+  cat <<EOF
+Usage: elite <command>
+
+  update            deploy the latest code from GitHub (branch: ${BRANCH:-main})
+  rollback          go back to the previous version
+  restart           restart both apps (after editing shared/backend.env)
+  stop              stop both apps (e.g. before restoring a backup; start again: elite restart)
+  status            are both apps running?
+  logs [name]       recent log lines (elite-agent-app or elite-website)
+  admin             create an admin account, or reset an admin's password
+  run <script> ...  run an npm script of the agent app, e.g. elite run db:clear-demo
+  backup            make a backup now (it also runs every night)
+  https             get or renew the HTTPS certificate (after DNS points here)
+EOF
+}
+
+# Runs a command as the app user (from root or from the app user itself).
+as_app() {
+  if [ "$(id -un)" = "$ELITE_USER" ]; then env ELITE_HOME="$ELITE_HOME" "$@"
+  else sudo -u "$ELITE_USER" -H env ELITE_HOME="$ELITE_HOME" "$@"; fi
+}
+
+# Start from a folder the app user can enter (root's shell usually sits in /root).
+cd "$ELITE_HOME" 2>/dev/null || cd /
+
+need_root() { [ "$(id -u)" = 0 ] || { echo "Run as root: sudo elite $1" >&2; exit 1; }; }
+
+https() {
+  need_root https
+  local ips names=() name
+  ips=" $(hostname -I) $(curl -fsS --max-time 5 https://api.ipify.org 2>/dev/null || true) "
+  for name in "$DOMAIN" "www.$DOMAIN" "$APP_DOMAIN"; do
+    if getent ahosts "$name" | awk '{print $1}' | sort -u | while read -r ip; do [[ "$ips" == *" $ip "* ]] && echo yes; done | grep -q yes; then
+      names+=(-d "$name")
+    else
+      echo "• $name does not point to this server yet (DNS) — skipped."
+    fi
+  done
+  if [ ${#names[@]} -eq 0 ]; then
+    echo "No domain points here yet. Add the DNS records (see HOSTING.md), wait a few minutes, then: elite https"
+    return 1
+  fi
+  local contact=(-m "${LE_EMAIL:-}")
+  [ -n "${LE_EMAIL:-}" ] || contact=(--register-unsafely-without-email)
+  certbot --nginx "${names[@]}" --redirect --agree-tos "${contact[@]}" -n --keep-until-expiring --expand
+  echo "HTTPS is on for: ${names[*]//-d /}"
+}
+
+case "${1:-}" in
+  update)
+    as_app git -C "$ELITE_HOME/src" fetch --quiet origin "${BRANCH:-main}"
+    as_app git -C "$ELITE_HOME/src" reset --quiet --hard FETCH_HEAD
+    as_app bash "$ELITE_HOME/src/deploy/update.sh"
+    ;;
+  rollback) as_app bash "$ELITE_HOME/src/deploy/update.sh" --rollback ;;
+  restart)
+    as_app pm2 startOrReload "$ELITE_HOME/current/deploy/ecosystem.config.cjs" --update-env
+    as_app pm2 save >/dev/null
+    ;;
+  stop) as_app pm2 stop all ;;
+  status) as_app pm2 status ;;
+  logs) as_app pm2 logs --lines 100 --nostream ${2:+"$2"} ;;
+  admin) cd "$ELITE_HOME/current/backend" && as_app npm run --silent admin:create ;;
+  run)
+    shift
+    [ $# -gt 0 ] || { usage; exit 1; }
+    cd "$ELITE_HOME/current/backend" && as_app npm run "$@"
+    ;;
+  backup) as_app bash "$ELITE_HOME/src/deploy/backup.sh" ;;
+  https) https ;;
+  *) usage ;;
+esac

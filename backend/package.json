@@ -24,6 +24,7 @@
     "import:website-listings": "tsx scripts/import-website-listings.ts",
     "db:sync": "node scripts/db-sync.mjs",
     "db:clear-demo": "node --conditions=react-server --import tsx scripts/clear-demo-data.ts",
+    "admin:create": "node --conditions=react-server --import tsx scripts/create-admin.ts",
     "photos:optimize": "node --conditions=react-server --import tsx scripts/optimize-photos.ts",
     "photos:watermark": "node --conditions=react-server --import tsx scripts/optimize-photos.ts"
   },
