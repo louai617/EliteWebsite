@@ -3,6 +3,7 @@ import { getTranslations } from 'next-intl/server';
 import Link from 'next/link';
 import Image from 'next/image';
 import PropertyCard from '@/components/properties/PropertyCard';
+import heroImage from '@/assets/hero-katara-towers.jpg';
 import { getListings } from '@/lib/listings';
 
 export default async function HomePage({ params }: { params: Promise<{ locale: string }> }) {
@@ -16,15 +17,19 @@ export default async function HomePage({ params }: { params: Promise<{ locale: s
     <main className="min-h-screen">
       {/* Hero Section */}
       <section className="relative h-screen flex items-center justify-center bg-black overflow-hidden">
-        <Image 
-          src="/hero.svg" 
-          alt="Luxury Real Estate Qatar" 
+        {/* Imported so Next knows its size and makes a blurred placeholder; served as AVIF/WebP per screen. */}
+        <Image
+          src={heroImage}
+          alt="Katara Towers in Lusail, Qatar, lit up at night"
           fill
           sizes="100vw"
-          priority 
-          className="object-cover opacity-60"
+          priority
+          placeholder="blur"
+          className="object-cover object-[42%_center]"
         />
-        
+        {/* Keeps the headline readable without dimming the towers too much. */}
+        <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-black/35 to-black/60" aria-hidden="true" />
+
         <div className="relative z-10 text-center text-white px-4 max-w-4xl">
           <h1 className="text-5xl md:text-7xl font-bold mb-6 tracking-tight animate-in fade-in slide-in-from-bottom-4 duration-1000">
             {t('title')}
