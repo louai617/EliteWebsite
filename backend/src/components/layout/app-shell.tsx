@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { usePathname, useSearchParams } from "next/navigation";
-import { ChevronRight, Menu, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
+import { ChevronRight, Globe, Menu, PanelLeftClose, PanelLeftOpen, Search } from "lucide-react";
 import type { SessionUser } from "@/lib/auth/session";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
@@ -107,7 +107,8 @@ function SidebarNav({ user, collapsed, onNavigate }: { user: SessionUser; collap
   );
 }
 
-export function AppShell({ user, children }: { user: SessionUser; children: React.ReactNode }) {
+/** `websiteUrl`: the public website (CLIENT_APP_URL), for the "Website" button in the top bar. */
+export function AppShell({ user, websiteUrl, children }: { user: SessionUser; websiteUrl: string; children: React.ReactNode }) {
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [searchOpen, setSearchOpen] = useState(false);
@@ -174,13 +175,18 @@ export function AppShell({ user, children }: { user: SessionUser; children: Reac
           <button
             type="button"
             onClick={() => setSearchOpen(true)}
-            className="flex h-8 w-full max-w-md items-center gap-2 rounded-md border bg-card px-2.5 text-[13px] text-muted-foreground shadow-xs transition-colors hover:bg-accent"
+            className="flex h-8 w-full max-w-md min-w-0 items-center gap-2 rounded-md border bg-card px-2.5 text-[13px] text-muted-foreground shadow-xs transition-colors hover:bg-accent"
           >
             <Search className="size-4" />
             <span className="truncate">Search leads, properties, clients…</span>
             <kbd className="ml-auto hidden rounded border bg-muted px-1.5 font-mono text-[10px] sm:inline">⌘K</kbd>
           </button>
           <div className="ml-auto flex items-center gap-2">
+            <Button asChild variant="outline" size="sm" className="gap-1.5">
+              <a href={websiteUrl} title="Go to the website" aria-label="Go to the website">
+                <Globe /> <span className="hidden sm:inline">Website</span>
+              </a>
+            </Button>
             <QuickCreate />
             <UserMenu user={user} />
           </div>

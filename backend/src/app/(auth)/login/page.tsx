@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
+import { ArrowLeft } from "lucide-react";
 import { getCurrentUser } from "@/lib/auth/session";
+import { CLIENT_APP_URL } from "@/lib/env";
 import { LogoMark } from "@/components/layout/logo";
 import { LoginForm } from "./login-form";
 
@@ -37,6 +39,9 @@ export default async function LoginPage({ searchParams }: PageProps<"/login">) {
 
       <section className="flex items-center justify-center px-4 py-12 sm:px-8">
         <div className="w-full max-w-sm">
+          <a href={CLIENT_APP_URL} className="mb-8 inline-flex items-center gap-1.5 text-sm text-muted-foreground transition-colors hover:text-foreground">
+            <ArrowLeft className="size-4" /> Back to the website
+          </a>
           <div className="mb-8 flex items-center gap-2.5 lg:hidden">
             <LogoMark />
             <span className="font-serif text-base tracking-[0.22em]">ELITE</span>

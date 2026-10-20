@@ -132,7 +132,8 @@ Without it everything still works; the website just picks up agent changes withi
 | Manager (demo seed only) | http://localhost:3002/login | fatima@elite.qa or james@elite.qa | `Elite@2026` |
 | Agent (demo seed only) | http://localhost:3002/login | omar@elite.qa (also aisha, rohan, layla, youssef) | `Elite@2026` |
 
-On the website, the **Agent portal** button opens this same login page. The manager and agent
+On the website, the **Agent portal** button opens this same login page; on the way back, use
+**Back to the website** on the sign-in page or **Website** in the agent app's top bar. The manager and agent
 logins exist only after `SEED_DEMO=1 npx prisma db seed`; otherwise create your team in
 **Users**. Change the admin's password before real use.
 
