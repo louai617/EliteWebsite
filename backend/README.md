@@ -16,7 +16,7 @@ cd backend
 npm install                 # also runs `prisma generate`
 cp .env.example .env        # then set SESSION_SECRET (openssl rand -base64 32)
 npx prisma migrate dev      # creates ./dev.db and applies migrations
-npx prisma db seed          # realistic Doha demo data (wipes CRM tables first)
+npx prisma db seed          # admin account only (wipes CRM tables first); SEED_DEMO=1 for demo data
 npm run dev                 # http://localhost:3002/login  (CRM + REST API at /api)
                             # (in development the Prisma client is regenerated and new migrations are
                             #  applied automatically at start-up and when the schema changes)
@@ -39,13 +39,24 @@ can no longer sign in or reset their password.
 
 ### Development accounts (created by the seed)
 
+`npx prisma db seed` creates only the admin account, the company settings and the default
+daily tasks. `SEED_DEMO=1 npx prisma db seed` adds a realistic Doha demo dataset (team,
+listings, owners, leads, clients, deals, 3 weeks of activity); the test-suite uses it.
+
 | Role    | E-mail                                                                    | Password     |
 | ------- | ------------------------------------------------------------------------- | ------------ |
 | Admin   | admin@elite.qa                                                            | `Admin@2026` |
-| Manager | fatima@elite.qa, james@elite.qa                                           | `Elite@2026` |
-| Agent   | omar@elite.qa, aisha@elite.qa, rohan@elite.qa, layla@elite.qa, youssef@elite.qa | `Elite@2026` |
+| Manager (demo) | fatima@elite.qa, james@elite.qa                                    | `Elite@2026` |
+| Agent (demo)   | omar@elite.qa, aisha@elite.qa, rohan@elite.qa, layla@elite.qa, youssef@elite.qa | `Elite@2026` |
 
-Change these before using real data.
+Change the admin's password, e-mail and name (Users → ✎) before using real data.
+
+**Removing demo data from an existing database:** `npm run db:clear-demo` lists what would go;
+`npm run db:clear-demo -- --yes` backs the database up to `backups/`, then removes every listing,
+owner, lead, client, viewing, deal, task, report, document, reservation, import and log entry and
+every non-admin account (`src/services/demo-data.ts`). Settings, scoring, contract templates and
+company-wide daily tasks stay; reference numbers restart at ELT-1001; the removed files are
+moved to `backups/demo-files-<time>/`.
 
 ### Scripts
 
@@ -53,7 +64,7 @@ Change these before using real data.
 | --- | --- |
 | `npm run dev` / `build` / `start` | Next.js |
 | `npm run typecheck` / `lint` | `next typegen && tsc`, ESLint |
-| `npm test` | Service test-suites (RBAC, validation, commission, hierarchy, imports, tasks, daily reports & rollover, scoring, client isolation, public listings, website bookings, saved homes, recommendations, password reset, lead rules, deals, contracts, documents, reservations, listing media, photo pipeline, watermark) on a throwaway `test.db` |
+| `npm test` | Service test-suites (RBAC, validation, commission, hierarchy, imports, tasks, daily reports & rollover, scoring, client isolation, public listings, website bookings, saved homes, recommendations, password reset, lead rules, deals, contracts, documents, reservations, listing media, photo pipeline, watermark, clearing demo data) on a throwaway `test.db` with the demo seed |
 | `npm run db:backup` | Online copy of the SQLite database to `backups/` (do this before migrating) |
 | `npm run import:website-listings` | Import the website's former hard-coded listings (`samples/website-listings.json`); idempotent by reference |
 | `npm run db:sync` | Regenerate the Prisma client if the schema changed and apply pending migrations (runs automatically in development) |
@@ -62,7 +73,8 @@ Change these before using real data.
 | `npm run reports:backfill -- 30` | Finalize daily reports for past days that have none |
 | `npm run db:migrate` | `prisma migrate dev` |
 | `npm run db:deploy` | `prisma migrate deploy` (production) |
-| `npm run db:seed` | Seed demo data |
+| `npm run db:seed` | Seed the admin account (`SEED_DEMO=1` for demo data) |
+| `npm run db:clear-demo` | Remove all demo data, keep the admin account and settings (`-- --yes` to apply) |
 | `npm run db:reset` | Drop, re-migrate and re-seed the dev database |
 | `npm run db:studio` | Prisma Studio |
 
@@ -441,4 +453,4 @@ filtered/sorted column. Money is stored in whole QAR (`Int`).
   before running several instances.
 - The in-process scheduler suits a single server; use the cron endpoint for several instances.
 - Import field mappings are provisional until verified against real portal exports.
-- The seed uses Unsplash photo URLs; they need internet access to display.
+- The demo seed uses Unsplash photo URLs; they need internet access to display.

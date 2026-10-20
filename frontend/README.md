@@ -52,6 +52,9 @@ use their CRM accounts.
   network tab can't be blocked by any website; the watermark is the real protection.
 - `POST /api/revalidate` (Bearer `REVALIDATE_SECRET`, constant-time compare) is called by the
   agent app whenever a property changes and expires the `listings` tag immediately.
+- A single listing is cached as a value (`unstable_cache`), not as a fetch response: Next only
+  caches 200 responses, so a sold, unpublished or deleted listing would otherwise keep showing
+  when that call is missed. This way "not found" is cached too and the page goes within a minute.
 - If the agent app is unreachable the pages show a friendly error/empty state instead of
   crashing, and recover on the next request.
 

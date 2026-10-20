@@ -26,10 +26,13 @@ cd frontend && npm install && cp .env.example .env.local && npm run dev
 | Who | Where | Login |
 | --- | --- | --- |
 | Admin | http://localhost:3002/login | admin@elite.qa / `Admin@2026` |
-| Managers | http://localhost:3002/login | fatima@elite.qa, james@elite.qa / `Elite@2026` |
-| Agents | http://localhost:3002/login | omar@ … youssef@elite.qa / `Elite@2026` |
+
+The seed starts clean: only the admin account, no listings or team. Add managers and agents
+in **Users**. For a demo team with sample listings and history: `SEED_DEMO=1 npx prisma db seed`
+(managers fatima@ / james@, agents omar@ … youssef@elite.qa, password `Elite@2026`). To empty
+a database that has the demo data: `npm run db:clear-demo` in `backend/` (see SETUP.md).
 
 Step-by-step instructions, production domains and troubleshooting: [`SETUP.md`](SETUP.md).
 
-Development accounts only (created by the seed) — change them before using real data. The
+Development login (created by the seed) — change its password, e-mail and name before using real data. The
 website's **Agent portal** button opens http://localhost:3002/login; only staff accounts can sign in.

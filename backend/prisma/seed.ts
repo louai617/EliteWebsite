@@ -1,7 +1,10 @@
 /**
- * Development seed — realistic Doha / Qatar data.
+ * Development seed.
  *
- *   npx prisma db seed        (or: npm run db:seed)
+ *   npm run db:seed                  a clean start: the admin account, company settings and the
+ *                                    default daily task rules — no listings, team or leads
+ *   SEED_DEMO=1 npm run db:seed      plus a realistic Doha demo dataset (team, listings, leads,
+ *                                    clients, deals, 3 weeks of activity); the test-suite uses it
  *
  * WARNING: wipes every CRM table first. Never point this at a production database.
  */
@@ -37,6 +40,8 @@ import { importWebsiteListings } from "./website-listings";
 if (process.env.NODE_ENV === "production") {
   throw new Error("Refusing to run the development seed with NODE_ENV=production.");
 }
+
+const DEMO = ["1", "true", "yes"].includes((process.env.SEED_DEMO ?? "").toLowerCase());
 
 const db = new PrismaClient({
   adapter: new PrismaBetterSqlite3({ url: process.env.DATABASE_URL ?? "file:./dev.db" }),
@@ -202,8 +207,23 @@ function explain(error: unknown) {
   return null;
 }
 
+/** The default daily tasks every agent gets (Tasks › Daily tasks; admins can change them). */
+async function createDailyTemplates() {
+  const templateSpecs: { title: string; taskType: TaskType; activityType: WorkActivityType; targetCount: number; priority: Priority; dueHour: number }[] = [
+    { title: "Make 20 calls", taskType: "CALL", activityType: "CALL", targetCount: 20, priority: "HIGH", dueHour: 18 },
+    { title: "Follow up with 5 leads", taskType: "LEAD_FOLLOW_UP", activityType: "FOLLOW_UP", targetCount: 5, priority: "MEDIUM", dueHour: 17 },
+    { title: "Repost 5 listings", taskType: "PROPERTY_REPOST", activityType: "PROPERTY_REPOST", targetCount: 5, priority: "MEDIUM", dueHour: 13 },
+    { title: "Post 1 new listing on the portals", taskType: "PROPERTY_POSTING", activityType: "PROPERTY_POST", targetCount: 1, priority: "LOW", dueHour: 18 },
+  ];
+  const templates = [];
+  for (const [i, spec] of templateSpecs.entries()) {
+    templates.push(await db.dailyTaskTemplate.create({ data: { ...spec, description: "Counts automatically from logged activity.", sortOrder: i + 1, createdAt: daysAgo(40) } }));
+  }
+  return templates;
+}
+
 async function main() {
-  console.log("Seeding ELITE CRM…");
+  console.log(DEMO ? "Seeding ELITE CRM with demo data…" : "Seeding ELITE CRM (admin account only)…");
   await ensureSchema();
   await wipe();
 
@@ -211,8 +231,10 @@ async function main() {
     data: {
       id: "default", companyName: "ELITE Real Estate", saleCommissionPercent: 2, rentalCommissionPercent: 8.33, agentSharePercent: 40,
       // Demo payment details so website reservations work locally — replace them in Settings → Reservations & payments.
-      fawranEnabled: true, bankName: "Demo Bank (replace in Settings)", bankAccountName: "ELITE Real Estate W.L.L.",
-      bankIban: "QA00DEMO000000000000000000000", fawranAlias: "ELITE-DEMO", paymentInstructions: "Demo details for local testing — do not transfer money.",
+      ...(DEMO && {
+        fawranEnabled: true, bankName: "Demo Bank (replace in Settings)", bankAccountName: "ELITE Real Estate W.L.L.",
+        bankIban: "QA00DEMO000000000000000000000", fawranAlias: "ELITE-DEMO", paymentInstructions: "Demo details for local testing — do not transfer money.",
+      }),
     },
   });
 
@@ -229,6 +251,12 @@ async function main() {
     { name: "Layla Nasser", email: "layla@elite.qa", role: "AGENT", phone: "+974 5500 3004" },
     { name: "Youssef Benali", email: "youssef@elite.qa", role: "AGENT", phone: "+974 5500 3005" },
   ];
+  if (!DEMO) {
+    await db.user.create({ data: { name: "ELITE Admin", email: "admin@elite.qa", role: "ADMIN", passwordHash: adminPassword } });
+    await createDailyTemplates();
+    console.log("Done. Log in with admin@elite.qa / Admin@2026 and change the password in Settings (see README).");
+    return;
+  }
   const users = [];
   for (const spec of userSpecs) {
     users.push(
@@ -710,16 +738,7 @@ async function main() {
   });
 
   // ─── Daily task templates ───
-  const templateSpecs: { title: string; taskType: TaskType; activityType: WorkActivityType; targetCount: number; priority: Priority; dueHour: number }[] = [
-    { title: "Make 20 calls", taskType: "CALL", activityType: "CALL", targetCount: 20, priority: "HIGH", dueHour: 18 },
-    { title: "Follow up with 5 leads", taskType: "LEAD_FOLLOW_UP", activityType: "FOLLOW_UP", targetCount: 5, priority: "MEDIUM", dueHour: 17 },
-    { title: "Repost 5 listings", taskType: "PROPERTY_REPOST", activityType: "PROPERTY_REPOST", targetCount: 5, priority: "MEDIUM", dueHour: 13 },
-    { title: "Post 1 new listing on the portals", taskType: "PROPERTY_POSTING", activityType: "PROPERTY_POST", targetCount: 1, priority: "LOW", dueHour: 18 },
-  ];
-  const templates = [];
-  for (const [i, spec] of templateSpecs.entries()) {
-    templates.push(await db.dailyTaskTemplate.create({ data: { ...spec, description: "Counts automatically from logged activity.", sortOrder: i + 1, createdAt: daysAgo(40) } }));
-  }
+  const templates = await createDailyTemplates();
 
   // ─── Agent activity history (last 21 days + today so far) ───
   // Each agent has a different work rate so the leaderboard and trends are meaningful.

@@ -23,6 +23,7 @@
     "reports:backfill": "node --conditions=react-server --import tsx scripts/backfill-reports.ts",
     "import:website-listings": "tsx scripts/import-website-listings.ts",
     "db:sync": "node scripts/db-sync.mjs",
+    "db:clear-demo": "node --conditions=react-server --import tsx scripts/clear-demo-data.ts",
     "photos:optimize": "node --conditions=react-server --import tsx scripts/optimize-photos.ts",
     "photos:watermark": "node --conditions=react-server --import tsx scripts/optimize-photos.ts"
   },

@@ -35,6 +35,12 @@ async function send() {
   }
 }
 
+/** Ask the website to refresh its listings right away (for scripts, which exit before a debounce). */
+export async function refreshWebsiteNow() {
+  if (!SECRET || process.env.NODE_ENV === "test") return;
+  await send();
+}
+
 /** Ask the website to refresh its listings (debounced, fire-and-forget). */
 export function notifyWebsite() {
   if (!SECRET || process.env.NODE_ENV === "test") return;

@@ -1,11 +1,11 @@
 /**
  * Runs the service test-suite against a fresh throwaway SQLite database (./test.db):
- * delete → migrate deploy → seed → tests. The development database is never touched.
+ * delete → migrate deploy → demo seed → tests. The development database is never touched.
  */
 import { execSync } from "node:child_process";
 import { rmSync } from "node:fs";
 
-const env = { ...process.env, DATABASE_URL: "file:./test.db", NODE_ENV: "test" };
+const env = { ...process.env, DATABASE_URL: "file:./test.db", NODE_ENV: "test", SEED_DEMO: "1" };
 const run = (cmd) => execSync(cmd, { stdio: "inherit", env });
 
 for (const suffix of ["", "-journal", "-wal", "-shm"]) rmSync(`test.db${suffix}`, { force: true });
@@ -18,3 +18,4 @@ run("node --conditions=react-server --import tsx tests/workflow.test.ts");
 run("node --conditions=react-server --import tsx tests/media.test.ts");
 run("node --conditions=react-server --import tsx tests/photos.test.ts");
 run("node --conditions=react-server --import tsx tests/watermark.test.ts");
+run("node --conditions=react-server --import tsx tests/clear-demo.test.ts");

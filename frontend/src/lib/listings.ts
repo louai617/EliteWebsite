@@ -7,6 +7,7 @@
  * 60-second safety net. No database access and no secrets live in this app.
  */
 
+import { unstable_cache } from 'next/cache';
 import type { Listing, ListingPage, ListingQuery } from './listing-types';
 
 export * from './listing-types';
@@ -48,9 +49,32 @@ export async function getListings(query: ListingQuery = {}): Promise<ListingPage
   return (await get<ListingPage>(`/public/properties${qs(query)}`)).data;
 }
 
+/**
+ * One listing, cached as a value rather than as a fetch response: Next only caches 200
+ * responses, so a sold / unpublished / deleted listing would keep showing from the cache
+ * whenever the CRM's refresh call is missed (website down, secret not set). Cached this way,
+ * "not found" is stored too and the page disappears on the next refresh. Outages throw, so they
+ * are never cached and the last good copy stays.
+ */
+const fetchListing = unstable_cache(
+  async (ref: string): Promise<{ found: true; listing: Listing } | { found: false }> => {
+    const res = await fetch(`${API}/public/properties/${encodeURIComponent(ref)}`, { headers: { Accept: 'application/json' }, cache: 'no-store' });
+    if (res.status === 404) return { found: false };
+    const body = (await res.json()) as Envelope<Listing>;
+    if (!res.ok || !body.ok) throw new Error(`HTTP ${res.status}`);
+    return { found: true, listing: body.data };
+  },
+  ['listing-detail'],
+  { tags: [LISTINGS_TAG], revalidate: REVALIDATE_SECONDS },
+);
+
 /** One listing; `undefined` = not found (404), `null` = CRM unreachable. */
 export async function getListing(ref: string): Promise<Listing | null | undefined> {
-  const { data, status } = await get<Listing>(`/public/properties/${encodeURIComponent(ref)}`);
-  if (data) return data;
-  return status === 404 ? undefined : null;
+  try {
+    const result = await fetchListing(ref);
+    return result.found ? result.listing : undefined;
+  } catch (error) {
+    console.error(`[listings] CRM API unreachable (${API}/public/properties/${ref})`, error instanceof Error ? error.message : error);
+    return null;
+  }
 }

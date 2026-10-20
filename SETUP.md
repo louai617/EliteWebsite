@@ -52,7 +52,7 @@ Open `backend/.env` and set `SESSION_SECRET` to a long random string. To generat
 
 ```bash
 npx prisma migrate dev        # creates dev.db with all tables
-npx prisma db seed            # demo data: users, properties, leads, 3 weeks of activity
+npx prisma db seed            # the admin account only (add SEED_DEMO=1 for a demo team and listings)
 npm run dev                   # http://localhost:3002
 ```
 
@@ -62,15 +62,31 @@ npm run dev                   # http://localhost:3002
 npm run db:backup             # safety copy in backend/backups/
 npx prisma migrate deploy     # adds the new tables/columns, keeps your data
 npm run import:website-listings   # copies the 4 listings that used to be hard-coded on the website
-npx prisma db seed            # optional: reloads demo data (this WIPES the CRM tables)
+npx prisma db seed            # optional: starts over (this WIPES the CRM tables)
 npm run dev
 ```
 
 `import:website-listings` is safe to run more than once: listings that already exist (same
-reference, e.g. `ELT-00123`) are skipped. The seed runs it automatically.
+reference, e.g. `ELT-00123`) are skipped. The demo seed (`SEED_DEMO=1`) runs it automatically.
 
-Run the seed if you want the demo logins below and the
-sample history. Skip it if you have entered data you want to keep.
+The seed gives a clean start: the admin login below, company settings and the default daily
+tasks — no listings, team or leads. `SEED_DEMO=1 npx prisma db seed` loads a demo team, sample
+listings and 3 weeks of history instead. Skip the seed if you have entered data you want to keep.
+
+**Removing the demo data** (keeps the admin account, settings, watermark, scoring, contract
+templates and daily tasks; removes every listing, owner, lead, client, viewing, deal, task,
+report, document, reservation and every other account):
+
+```bash
+cd backend
+npm run db:clear-demo            # shows what would be removed, changes nothing
+npm run db:clear-demo -- --yes   # removes it (a copy of the database goes to backend/backups/ first)
+```
+
+The removed photos and files are moved to `backend/backups/demo-files-<time>/`; delete that
+folder once you're sure. The next listing will be ELT-1001. Then add your real team in
+**Users → Add team member**, and in **Users** edit the admin (✎) to set your own name, e-mail
+and phone — and change its password in Settings.
 
 The October update's migration (`lead_rules_documents_contracts`) keeps every record and maps
 the old deal statuses: *Negotiation / Contract pending / Contract signed* → **Pending contract**,
@@ -113,11 +129,12 @@ Without it everything still works; the website just picks up agent changes withi
 | Who | Where | E-mail | Password |
 | --- | --- | --- | --- |
 | Admin | http://localhost:3002/login | admin@elite.qa | `Admin@2026` |
-| Manager | http://localhost:3002/login | fatima@elite.qa or james@elite.qa | `Elite@2026` |
-| Agent | http://localhost:3002/login | omar@elite.qa (also aisha, rohan, layla, youssef) | `Elite@2026` |
+| Manager (demo seed only) | http://localhost:3002/login | fatima@elite.qa or james@elite.qa | `Elite@2026` |
+| Agent (demo seed only) | http://localhost:3002/login | omar@elite.qa (also aisha, rohan, layla, youssef) | `Elite@2026` |
 
-On the website, the **Agent portal** button opens this same login page. These are development
-accounts — change them before real use.
+On the website, the **Agent portal** button opens this same login page. The manager and agent
+logins exist only after `SEED_DEMO=1 npx prisma db seed`; otherwise create your team in
+**Users**. Change the admin's password before real use.
 
 ## 6. What to try
 
@@ -188,15 +205,15 @@ accounts — change them before real use.
 - Without SMTP settings, e-mails are saved to `backend/storage/outbox/` — open the `.html`
   files in a browser to see them (and the code). Settings → *E-mail* → **Send me a test e-mail**.
 
-**As an agent (omar@elite.qa)**
+**As an agent** (omar@elite.qa with the demo seed, or an agent you created)
 - Dashboard → "Today's work" counters.
 - **Log activity** (top of My tasks, or New → Logged activity): log a call and watch the "Make 20 calls" daily task progress.
 - **Reports** → "My report for today": write and submit the end-of-day summary.
 
 **As a visitor (website, :3001, no account)**
 - Open any property → **Book a viewing**: pick a day and a free time (the agent's calendar is
-  checked), enter name, mobile and e-mail → *Add to calendar*. In the agent app (omar@elite.qa
-  or admin) the booking is under **Viewings → "Website bookings to confirm"** and the visitor is
+  checked), enter name, mobile and e-mail → *Add to calendar*. In the agent app (the listing's
+  agent or admin) the booking is under **Viewings → "Website bookings to confirm"** and the visitor is
   a new website lead; choose ⋯ → *Confirm* and the visitor is e-mailed.
 - **Reserve this home** → enter your details → you land on your private reservation page
   (the link is also e-mailed): bank / Fawran details with copy buttons, payer details and
@@ -274,7 +291,7 @@ the website's only secret, `REVALIDATE_SECRET`, is server-only and never reaches
 
 | Problem | Fix |
 | --- | --- |
-| "Invalid email or password" with the demo logins | Run `npx prisma db seed` in `backend/` (creates the accounts) and sign in at http://localhost:3002/login. Old client-portal accounts can no longer sign in. |
+| "Invalid email or password" with the demo logins | The demo team only exists after `SEED_DEMO=1 npx prisma db seed` in `backend/` (or after `npm run db:clear-demo` it is gone on purpose). The admin login always exists. Old client-portal accounts can no longer sign in. |
 | Website says it can't reach the server | Start the backend first and check `NEXT_PUBLIC_API_URL` in `frontend/.env.local`. Restart `npm run dev` after editing `.env.local`. |
 | `Unknown field … for select statement` / `The column … does not exist` after pulling | The database code was out of date. In development the agent app now fixes this by itself, even if it was already running when you pulled: it regenerates the Prisma client and applies new migrations (watch for `[db] …` lines in the terminal). If an update can't be applied, a red box at the top of the agent app says why and what to run. You can always run `npm run db:sync` in `backend/` and restart. |
 | `Port 3001/3002 is already in use` | Stop the other process (an older `npm run dev`) or restart the terminal. |
@@ -284,8 +301,8 @@ the website's only secret, `REVALIDATE_SECRET`, is server-only and never reaches
 | "Attach the viewing form first" | Upload the signed viewing form on the lead (Documents or Stage paperwork), or request a pass. |
 | "Reserve this home" says reservations aren't open | Fill in the IBAN or Fawran alias under Settings → Reservations & payments. |
 | A big video upload fails | Videos are up to 200 MB (MP4, MOV, WebM). For longer films upload to YouTube or Vimeo and paste the link. Behind a reverse proxy (nginx), allow large bodies on `/api/media-upload/`, e.g. `client_max_body_size 210m;`. |
-| Property photos don't show | The demo photos come from images.unsplash.com and need an internet connection. |
+| Property photos don't show | The demo seed's photos come from images.unsplash.com and need an internet connection. |
 | Website shows "No properties" | Start the agent app first, check that properties have **Show on website** on and are *Available*/*Reserved*. |
 | Agent changes take up to a minute to appear | Set the same `WEBSITE_REVALIDATE_SECRET` / `REVALIDATE_SECRET` in both env files (step 4) and restart both apps. |
 | "Book a viewing" shows no times | Viewings are 09:00–20:00 Qatar time (Fridays from 14:00), at least 2 hours ahead, up to 30 days ahead; taken slots are hidden. |
-| Want a completely clean start | In `backend/`: `npm run db:reset` (drops, re-migrates and re-seeds — wipes all data). |
+| Want a completely clean start | In `backend/`: `npm run db:clear-demo -- --yes` (keeps the admin and settings, backs up first), or `npm run db:reset` (drops and re-creates the database with only the admin — wipes everything, settings included). |
