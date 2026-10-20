@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "prisma generate && prisma migrate deploy",
+    "predev": "node scripts/db-sync.mjs",
     "dev": "next dev -p 3002",
     "prebuild": "prisma generate",
     "build": "next build",
@@ -22,6 +22,7 @@
     "cron:daily": "node --conditions=react-server --import tsx scripts/daily-rollover.ts",
     "reports:backfill": "node --conditions=react-server --import tsx scripts/backfill-reports.ts",
     "import:website-listings": "tsx scripts/import-website-listings.ts",
+    "db:sync": "node scripts/db-sync.mjs",
     "photos:optimize": "node --conditions=react-server --import tsx scripts/optimize-photos.ts"
   },
   "dependencies": {

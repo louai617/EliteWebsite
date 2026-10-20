@@ -18,7 +18,8 @@ cp .env.example .env        # then set SESSION_SECRET (openssl rand -base64 32)
 npx prisma migrate dev      # creates ./dev.db and applies migrations
 npx prisma db seed          # realistic Doha demo data (wipes CRM tables first)
 npm run dev                 # http://localhost:3002/login  (CRM + REST API at /api)
-                            # (dev/build regenerate the Prisma client; dev also applies new migrations)
+                            # (in development the Prisma client is regenerated and new migrations are
+                            #  applied automatically at start-up and when the schema changes)
 ```
 
 `DATABASE_URL` defaults to `file:./dev.db`, so `npm install` and the Prisma commands also work
@@ -55,6 +56,7 @@ Change these before using real data.
 | `npm test` | Service test-suites (RBAC, validation, commission, hierarchy, imports, tasks, daily reports & rollover, scoring, client isolation, public listings, website bookings, saved homes, recommendations, password reset, lead rules, deals, contracts, documents, reservations, listing media) on a throwaway `test.db` |
 | `npm run db:backup` | Online copy of the SQLite database to `backups/` (do this before migrating) |
 | `npm run import:website-listings` | Import the website's former hard-coded listings (`samples/website-listings.json`); idempotent by reference |
+| `npm run db:sync` | Regenerate the Prisma client if the schema changed and apply pending migrations (runs automatically in development) |
 | `npm run photos:optimize` | Re-encode photos uploaded before the photo pipeline (upright, no metadata, WebP, thumbnails); `-- --dry-run` to preview |
 | `npm run cron:daily` | Run the daily rollover once (for a system cron) |
 | `npm run reports:backfill -- 30` | Finalize daily reports for past days that have none |
