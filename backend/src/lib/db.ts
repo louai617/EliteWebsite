@@ -1,6 +1,12 @@
 import "server-only";
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3";
 import { PrismaClient } from "@/generated/prisma/client";
+// Plain JS shared with `npm run db:sync` (regenerate the client / apply pending migrations).
+import { ensureDatabase } from "../../scripts/db-sync.mjs";
+
+// Development server: catch up with schema changes whenever this module is (re)loaded, e.g. new
+// code pulled while `npm run dev` was already running. A no-op when nothing changed.
+if (process.env.NODE_ENV === "development" && process.env.NEXT_RUNTIME === "nodejs") ensureDatabase("database module loaded");
 
 /**
  * Single Prisma client per process. In development Next.js reloads modules on every
