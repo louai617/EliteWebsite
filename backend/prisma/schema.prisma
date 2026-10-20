@@ -520,24 +520,29 @@ model Property {
 }
 
 model PropertyImage {
-  id          String   @id @default(cuid())
-  propertyId  String
-  property    Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  id               String   @id @default(cuid())
+  propertyId       String
+  property         Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
   /// Absolute URL or an app path such as /api/uploads/properties/<id>/<file>.
-  url         String
+  url              String
   /// 640 px WebP for lists and thumbnails (uploads only; null for pasted URLs and older uploads).
-  thumbUrl    String?
+  thumbUrl         String?
   /// Pixel size and file size of `url` (uploads only).
-  width       Int?
-  height      Int?
-  bytes       Int?
+  width            Int?
+  height           Int?
+  bytes            Int?
   /// Tiny blurred preview (data: URL, ~300 bytes) shown while the photo loads.
-  blurDataUrl String?
+  blurDataUrl      String?
   /// SHA-256 of the original upload, to refuse the same photo twice on one listing.
-  checksum    String?
-  sortOrder   Int      @default(0)
-  isPrimary   Boolean  @default(false)
-  createdAt   DateTime @default(now())
+  checksum         String?
+  /// Clean original (no watermark) in private storage (storage/photo-masters/…), never served
+  /// publicly: staff download it, and the watermarked copy is rebuilt from it.
+  masterKey        String?
+  /// Settings.watermarkVersion that `url`/`thumbUrl` were rendered with (null: not yet).
+  watermarkVersion Int?
+  sortOrder        Int      @default(0)
+  isPrimary        Boolean  @default(false)
+  createdAt        DateTime @default(now())
 
   @@index([propertyId, sortOrder])
   @@index([propertyId, checksum])
@@ -942,12 +947,12 @@ model Settings {
 
   // Booking deposits (website reservations)
   /// Deposit for homes for sale, % of the price (a listing can override it).
-  saleDepositPercent   Float    @default(5)
+  saleDepositPercent   Float   @default(5)
   /// Deposit for rentals, in months of rent.
-  rentDepositMonths    Int      @default(1)
+  rentDepositMonths    Int     @default(1)
   /// Hours the client has to pay before an unpaid reservation can be released.
-  reservationHoldHours Int      @default(48)
-  fawranEnabled        Boolean  @default(true)
+  reservationHoldHours Int     @default(48)
+  fawranEnabled        Boolean @default(true)
   bankName             String?
   bankAccountName      String?
   bankIban             String?
@@ -956,7 +961,23 @@ model Settings {
   /// Fawran alias / registered mobile number of the company account.
   fawranAlias          String?
   paymentInstructions  String?
-  updatedAt            DateTime @updatedAt
+
+  // Listing photo watermark (applied to the public copies; originals stay clean)
+  watermarkEnabled  Boolean           @default(true)
+  watermarkPosition WatermarkPosition @default(CENTER)
+  /// Logo width, % of the photo's width.
+  watermarkSize     Int               @default(30)
+  /// Logo opacity, %.
+  watermarkOpacity  Int               @default(45)
+  /// Bumped on every change; photos rendered with an older version are redone in the background.
+  watermarkVersion  Int               @default(1)
+  updatedAt         DateTime          @updatedAt
+}
+
+enum WatermarkPosition {
+  CENTER
+  BOTTOM_RIGHT
+  BOTTOM_LEFT
 }
 
 /// Monotonic counters for human-friendly references (ELT-1001, DL-1001).

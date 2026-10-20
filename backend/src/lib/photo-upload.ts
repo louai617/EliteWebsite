@@ -25,6 +25,7 @@ export interface UploadedPhoto {
   isPrimary: boolean;
   sortOrder: number;
   lowRes: boolean;
+  hasOriginal: boolean;
 }
 
 export const isImageFile = (f: File) => /^image\//.test(f.type) || /\.(jpe?g|png|webp|avif|heic|heif)$/i.test(f.name);

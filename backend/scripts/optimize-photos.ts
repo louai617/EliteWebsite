@@ -1,50 +1,34 @@
 /**
- * Optimizes listing photos uploaded before the photo pipeline existed: each one is re-encoded
- * like a new upload (upright, metadata/GPS removed, max 2560 px WebP, 640 px thumbnail,
- * blurred preview). The new files are written and the database updated before the old file
- * is deleted, so an interruption never loses a photo. Pasted URLs (portals, CDNs) are skipped.
+ * Brings every uploaded listing photo in line with the current photo pipeline:
+ *   - photos uploaded before originals were kept: the current file becomes the clean original
+ *     (re-encoded like a new upload: upright, no metadata/GPS, max 2560 px WebP);
+ *   - the public copy is (re)made with the watermark from Settings › Photo watermark.
+ * The same work also runs by itself in the background (scheduler); this runs it all at once.
+ * Photos pasted as links (other websites) are left as they are.
  *
- *   npm run photos:optimize              (all listings)
- *   npm run photos:optimize -- --dry-run (only report what would change)
+ *   npm run photos:watermark              (alias: npm run photos:optimize)
+ *   npm run photos:watermark -- --dry-run (only count what would change)
  */
 import "dotenv/config";
 import { db } from "@/lib/db";
-import { processPhoto, removeStoredPhoto, storePhoto } from "@/services/photos";
-import { PUBLIC_PREFIX, readUpload } from "@/services/storage";
+import { countPendingWatermarks, refreshWatermarks } from "@/services/photo-watermark-job";
 
 async function main() {
-  const dryRun = process.argv.includes("--dry-run");
-  const rows = await db.propertyImage.findMany({
-    where: { thumbUrl: null, url: { startsWith: PUBLIC_PREFIX } },
-    select: { id: true, propertyId: true, url: true },
-  });
-  let done = 0;
-  let savedBytes = 0;
-  const skipped: string[] = [];
-  for (const row of rows) {
-    const file = await readUpload(row.url.slice(PUBLIC_PREFIX.length).split("/"));
-    if (!file) {
-      skipped.push(`${row.url} (file missing)`);
-      continue;
-    }
-    try {
-      const photo = await processPhoto(file.buf);
-      if (dryRun) {
-        savedBytes += file.buf.length - photo.full.length;
-        done++;
-        continue;
-      }
-      const { lowRes: _lowRes, ...stored } = await storePhoto(row.propertyId, photo);
-      await db.propertyImage.update({ where: { id: row.id }, data: stored });
-      await removeStoredPhoto([row.url]);
-      savedBytes += file.buf.length - stored.bytes;
-      done++;
-    } catch (error) {
-      skipped.push(`${row.url} (${error instanceof Error ? error.message : "unreadable"})`);
-    }
+  const total = await countPendingWatermarks();
+  if (process.argv.includes("--dry-run")) {
+    console.log(`${total} photo(s) would be updated.`);
+    return;
   }
-  console.log(`${dryRun ? "Would optimize" : "Optimized"} ${done} of ${rows.length} photo(s), ${(savedBytes / 1024 / 1024).toFixed(1)} MB smaller.`);
-  if (skipped.length) console.log(`Skipped:\n  ${skipped.join("\n  ")}`);
+  let done = 0;
+  for (;;) {
+    const result = await refreshWatermarks({ limit: 25 });
+    done += result.done;
+    if (total) process.stdout.write(`\r${done} of ${total} photo(s) updated`);
+    if (!result.remaining || !result.done) break;
+  }
+  console.log(total ? "" : "All photos are up to date.");
+  const left = await countPendingWatermarks();
+  if (left) console.log(`${left} photo(s) could not be processed (file missing or unreadable).`);
 }
 
 main()

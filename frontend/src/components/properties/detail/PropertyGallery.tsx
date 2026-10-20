@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
+import { protectPhoto } from '@/lib/protect-photo';
 import { useTranslations, useLocale } from 'next-intl';
 import { X, ChevronLeft, ChevronRight, Expand, Camera, Box, PlayCircle } from 'lucide-react';
 
@@ -83,7 +84,7 @@ export default function PropertyGallery({ images, blurs = [], title, hasVideo = 
   return (
     <>
       {/* Mosaic: one hero frame plus a 2x2 grid, collapsing to a single frame on mobile. */}
-      <div className="relative grid h-[300px] grid-cols-1 gap-2 overflow-hidden rounded-2xl sm:h-[420px] md:h-[540px] md:grid-cols-4 md:grid-rows-2">
+      <div className="protected-photo relative grid h-[300px] grid-cols-1 gap-2 overflow-hidden rounded-2xl sm:h-[420px] md:h-[540px] md:grid-cols-4 md:grid-rows-2" {...protectPhoto}>
         <button
           type="button"
           onClick={() => open(0)}
@@ -157,7 +158,8 @@ export default function PropertyGallery({ images, blurs = [], title, hasVideo = 
           aria-modal="true"
           aria-label={title}
           tabIndex={-1}
-          className="fixed inset-0 z-[100] flex flex-col bg-black/95 outline-none backdrop-blur-sm"
+          className="protected-photo fixed inset-0 z-[100] flex flex-col bg-black/95 outline-none backdrop-blur-sm"
+          {...protectPhoto}
         >
           <div className="flex items-center justify-between px-4 py-4 text-white sm:px-6">
             <span className="text-sm font-medium tabular-nums text-white/80">

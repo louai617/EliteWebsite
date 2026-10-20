@@ -4,24 +4,26 @@ import { db } from "@/lib/db";
 import { can } from "@/lib/permissions";
 import { ROLE_META } from "@/lib/constants";
 import { getSettings } from "@/services/settings";
+import { countPendingWatermarks } from "@/services/photo-watermark-job";
 import { recentEmails } from "@/services/mail";
 import { MAIL, mailConfigured } from "@/lib/env";
 import { formatDateTime } from "@/lib/format";
 import { Badge } from "@/components/ui/badge";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
-import { CompanySettingsForm, PasswordForm, PaymentSettingsForm, ProfileForm, SendTestEmailButton } from "@/components/settings/settings-forms";
+import { CompanySettingsForm, PasswordForm, PaymentSettingsForm, ProfileForm, SendTestEmailButton, WatermarkSettingsForm } from "@/components/settings/settings-forms";
 
 export const metadata: Metadata = { title: "Settings" };
 
 export default async function SettingsPage() {
   const user = await requireUser();
   const admin = can.editSettings(user);
-  const [profile, settings, managers, emails] = await Promise.all([
+  const [profile, settings, managers, emails, pendingWatermarks] = await Promise.all([
     db.user.findUniqueOrThrow({ where: { id: user.id }, select: { name: true, phone: true, avatarUrl: true, email: true, role: true } }),
     getSettings(),
     db.user.findMany({ where: { isActive: true, role: { in: ["ADMIN", "MANAGER"] } }, orderBy: { name: "asc" }, select: { id: true, name: true, role: true } }),
     admin ? recentEmails(8) : Promise.resolve([]),
+    admin ? countPendingWatermarks() : Promise.resolve(0),
   ]);
 
   return (
@@ -89,6 +91,24 @@ export default async function SettingsPage() {
                 bankSwift: settings.bankSwift ?? "",
                 fawranAlias: settings.fawranAlias ?? "",
                 paymentInstructions: settings.paymentInstructions ?? "",
+              }}
+            />
+          </CardContent>
+        </Card>
+        <Card id="watermark">
+          <CardHeader className="flex-col">
+            <CardTitle>Photo watermark</CardTitle>
+            <CardDescription>Stamped on every listing photo shown on the website.</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <WatermarkSettingsForm
+              editable={admin}
+              pending={pendingWatermarks}
+              settings={{
+                watermarkEnabled: settings.watermarkEnabled,
+                watermarkPosition: settings.watermarkPosition,
+                watermarkSize: settings.watermarkSize,
+                watermarkOpacity: settings.watermarkOpacity,
               }}
             />
           </CardContent>

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { WatermarkPosition } from "@/generated/prisma/enums";
 import { checkbox, optionalId, optionalText, percent, requiredInt, requiredText } from "./common";
 
 export const settingsSchema = z.object({
@@ -47,3 +48,12 @@ export const paymentSettingsSchema = z
     message: "Add the IBAN or the Fawran alias so clients know where to pay",
   });
 export type PaymentSettingsInput = z.input<typeof paymentSettingsSchema>;
+
+/** The watermark stamped on the public copies of listing photos (originals stay clean). */
+export const watermarkSettingsSchema = z.object({
+  watermarkEnabled: checkbox,
+  watermarkPosition: z.enum(WatermarkPosition, { error: "Choose a position" }),
+  watermarkSize: requiredInt(10, 60, "Size"),
+  watermarkOpacity: requiredInt(10, 90, "Opacity"),
+});
+export type WatermarkSettingsInput = z.input<typeof watermarkSettingsSchema>;

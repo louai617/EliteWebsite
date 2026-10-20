@@ -11,7 +11,7 @@ import sharp from "sharp";
 import { db } from "@/lib/db";
 import { toPublicError } from "@/lib/errors";
 import { propertySchema } from "@/schemas/property";
-import { PHOTO_RULES, processPhoto } from "@/services/photos";
+import { currentWatermark, PHOTO_RULES, processPhoto, renderPublic } from "@/services/photos";
 import { createProperty, deleteProperty, removePropertyImage, reorderImages, setPrimaryImage, uploadPropertyPhoto } from "@/services/properties";
 import { getPublicListing, listPublicListings } from "@/services/public-listings";
 import type { Role } from "@/generated/prisma/enums";
@@ -59,12 +59,13 @@ async function main() {
   // ── Pipeline ──
   const big = await photo(4000, 3000, { exif: true, orientation: 6 });
   const out = await processPhoto(big);
-  const outMeta = await sharp(out.full).metadata();
+  const outMeta = await sharp(out.master).metadata();
   check("stored as WebP", outMeta.format === "webp");
   check("rotated upright from EXIF (portrait) and capped at 2560 px", out.width === 1920 && out.height === 2560 && outMeta.width === 1920 && outMeta.height === 2560, { w: out.width, h: out.height });
   check("all metadata removed (EXIF, GPS, orientation)", !outMeta.exif && !outMeta.orientation && !outMeta.xmp && !outMeta.iptc, { exif: Boolean(outMeta.exif), o: outMeta.orientation });
-  check("much smaller than the original", out.full.length < big.length / 2, { before: big.length, after: out.full.length });
-  const thumbMeta = await sharp(out.thumb).metadata();
+  check("much smaller than the original", out.master.length < big.length / 2, { before: big.length, after: out.master.length });
+  const publicCopy = await renderPublic(out.master, out.width, out.height, (await currentWatermark()).options);
+  const thumbMeta = await sharp(publicCopy.thumb).metadata();
   check("640 px WebP thumbnail", thumbMeta.format === "webp" && Math.max(thumbMeta.width ?? 0, thumbMeta.height ?? 0) === 640);
   check("blurred preview is a tiny data URL", out.blurDataUrl.startsWith("data:image/webp;base64,") && out.blurDataUrl.length < 1200, out.blurDataUrl.length);
   check("checksum is SHA-256 of the upload", /^[0-9a-f]{64}$/.test(out.checksum));

@@ -2,6 +2,7 @@ import "server-only";
 import type { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import type { Furnishing, ListingPurpose, PropertyCategory, PropertyStatus, PropertySubcategory, PropertyType } from "@/generated/prisma/enums";
+import sharp from "sharp";
 import { db } from "@/lib/db";
 import { businessDate } from "@/lib/business-day";
 import { conflict, forbidden, invalid, notFound } from "@/lib/errors";
@@ -14,7 +15,7 @@ import { logActivity } from "./activity";
 import { onPropertyCreated } from "./automation";
 import { assertActiveUser, assertCanAccess } from "./access";
 import { nextReference } from "./references";
-import { PHOTO_RULES, processPhoto, removeStoredPhoto, storePhoto, type StoredPhoto } from "./photos";
+import { PHOTO_RULES, processPhoto, readMaster, removePhotoFiles, storePhoto, type StoredPhoto } from "./photos";
 import { deleteMediaFile } from "./storage";
 import { notifyWebsite } from "./website-sync";
 import { recordWorkActivity } from "./work-activities";
@@ -181,6 +182,8 @@ export async function getProperty(actor: Actor, id: string) {
   const showOwner = canSeeOwnerContact(actor, property);
   return {
     ...property,
+    // The private original's storage key stays on the server; the UI only needs to know there is one.
+    images: property.images.map(({ masterKey, watermarkVersion: _version, ...image }) => ({ ...image, hasOriginal: Boolean(masterKey) })),
     owner: showOwner ? property.owner : null,
     ownerHidden: !showOwner && Boolean(property.ownerId),
     canEdit: canEditProperty(actor, property),
@@ -314,7 +317,7 @@ export async function deleteProperty(actor: Actor, id: string) {
   if (!can.deleteRecords(actor)) throw forbidden("Only managers can delete properties.");
   const property = await db.property.findUnique({
     where: { id },
-    select: { reference: true, title: true, images: { select: { url: true, thumbUrl: true } }, media: { select: { storageKey: true } }, _count: { select: { deals: true } } },
+    select: { reference: true, title: true, images: { select: { url: true, thumbUrl: true, masterKey: true } }, media: { select: { storageKey: true } }, _count: { select: { deals: true } } },
   });
   if (!property) throw notFound("Property");
   if (property._count.deals > 0) {
@@ -327,7 +330,7 @@ export async function deleteProperty(actor: Actor, id: string) {
       description: `Deleted ${property.reference} — ${property.title}`, userId: actor.id,
     });
   });
-  await removeStoredPhoto(property.images.flatMap((img) => [img.url, img.thumbUrl]));
+  await Promise.all(property.images.map(removePhotoFiles));
   await Promise.all(property.media.map((m) => (m.storageKey ? deleteMediaFile(m.storageKey) : undefined)));
   notifyWebsite();
 }
@@ -379,15 +382,15 @@ export async function uploadPropertyPhoto(actor: Actor, propertyId: string, file
   const { lowRes, ...stored } = await storePhoto(propertyId, photo);
   try {
     const image = await addPropertyImage(actor, propertyId, stored.url, stored);
-    return { ...image, lowRes };
+    return { ...image, lowRes, hasOriginal: true };
   } catch (error) {
-    await removeStoredPhoto([stored.url, stored.thumbUrl]);
+    await removePhotoFiles(stored);
     throw error;
   }
 }
 
 export async function removePropertyImage(actor: Actor, imageId: string) {
-  const image = await db.propertyImage.findUnique({ where: { id: imageId }, select: { id: true, propertyId: true, isPrimary: true, url: true, thumbUrl: true } });
+  const image = await db.propertyImage.findUnique({ where: { id: imageId }, select: { id: true, propertyId: true, isPrimary: true, url: true, thumbUrl: true, masterKey: true } });
   if (!image) throw notFound("Photo");
   await editableProperty(actor, image.propertyId);
   await db.$transaction(async (tx) => {
@@ -397,8 +400,26 @@ export async function removePropertyImage(actor: Actor, imageId: string) {
       if (next) await tx.propertyImage.update({ where: { id: next.id }, data: { isPrimary: true } });
     }
   });
-  await removeStoredPhoto([image.url, image.thumbUrl]);
+  await removePhotoFiles(image);
   notifyWebsite();
+}
+
+/**
+ * The clean original of a listing photo (no watermark) as a JPEG, e.g. to upload to a portal.
+ * Only staff who can edit the listing (its agent, managers, admins). Null when there is none
+ * (photos pasted as links, or not processed yet).
+ */
+export async function openPhotoOriginal(actor: Actor, propertyId: string, imageId: string) {
+  const image = await db.propertyImage.findFirst({
+    where: { id: imageId, propertyId },
+    select: { masterKey: true, sortOrder: true, property: { select: { reference: true, agentId: true } } },
+  });
+  if (!image) return null;
+  if (!isStaff(actor) || !canEditProperty(actor, image.property)) throw forbidden("Only the listing's agent and managers can download original photos.");
+  const master = image.masterKey ? await readMaster(image.masterKey) : null;
+  if (!master) return null;
+  const jpeg = await sharp(master).jpeg({ quality: 92, mozjpeg: true }).toBuffer();
+  return { buf: jpeg, fileName: `${image.property.reference}-photo-${image.sortOrder + 1}.jpg` };
 }
 
 export async function setPrimaryImage(actor: Actor, imageId: string) {

@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type DragEvent, type HTMLAttributes, type ReactNode } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
-import { AlertTriangle, ArrowLeft, ArrowRight, GripVertical, ImagePlus, Link2, Loader2, RotateCw, Star, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowLeft, ArrowRight, Download, GripVertical, ImagePlus, Link2, Loader2, RotateCw, Star, Trash2, X } from "lucide-react";
 import { addImageUrlAction, removeImageAction, reorderImagesAction, setPrimaryImageAction } from "@/actions/properties";
 import { useAction } from "@/hooks/use-action";
 import { cn } from "@/lib/utils";
@@ -25,6 +25,8 @@ export interface SavedPhoto {
   height?: number | null;
   isPrimary: boolean;
   sortOrder: number;
+  /** A clean original (no watermark) is kept and can be downloaded. */
+  hasOriginal?: boolean;
 }
 
 const lowRes = (p: { width?: number | null; height?: number | null }) => p.width != null && p.height != null && Math.max(p.width, p.height) < GOOD_EDGE;
@@ -126,10 +128,12 @@ interface TileProps {
   onCover?: () => void;
   onRemove?: () => void;
   onRetry?: () => void;
+  /** Link to download the clean original (no watermark). */
+  originalHref?: string;
   dragProps?: HTMLAttributes<HTMLLIElement>;
 }
 
-function PhotoTile({ src, blur, index, total, cover, low, progress, status, error, draggable, dragging, onMove, onCover, onRemove, onRetry, dragProps }: TileProps) {
+function PhotoTile({ src, blur, index, total, cover, low, progress, status, error, draggable, dragging, onMove, onCover, onRemove, onRetry, originalHref, dragProps }: TileProps) {
   const busy = status === "queued" || status === "preparing" || status === "uploading" || status === "processing";
   return (
     <li
@@ -194,6 +198,13 @@ function PhotoTile({ src, blur, index, total, cover, low, progress, status, erro
             )}
           </div>
           <div className="flex">
+            {originalHref && (
+              <Button asChild variant="ghost" size="icon-xs">
+                <a href={originalHref} download title="Download the original (no watermark)" aria-label="Download original photo">
+                  <Download />
+                </a>
+              </Button>
+            )}
             {onCover && !cover && status !== "error" && (
               <Button type="button" variant="ghost" size="xs" onClick={onCover}>
                 <Star /> Cover
@@ -401,6 +412,7 @@ export function PhotoManager({ propertyId, images, onBusyChange }: { propertyId:
               dragging={drag.dragging === img.id}
               dragProps={drag.props(img.id)}
               onMove={uploading ? undefined : (d) => saveOrder(move(savedIds, i, d))}
+              originalHref={img.hasOriginal ? `/api/properties/${encodeURIComponent(propertyId)}/photos/${encodeURIComponent(img.id)}/original` : undefined}
               onCover={() => void primary.run({ imageId: img.id }).then((r) => r?.ok && router.refresh())}
               onRemove={() => {
                 setUploaded((list) => list.filter((u) => u.id !== img.id));

@@ -45,6 +45,11 @@ use their CRM accounts.
   cached for a day) with the blurred previews from the agent app (`cover_blur`,
   `image_blurs`) as placeholders while they load. In production the agent app must be on a
   public address (Next refuses to optimize images from private IPs such as `localhost`).
+- Listing photos arrive already watermarked (the clean originals never leave the agent app) and
+  are never resized above 1920 px (`images.deviceSizes`). Cards, the gallery and the lightbox
+  turn off right-click, dragging and the iPhone long-press menu (`lib/protect-photo.ts`,
+  `.protected-photo` in `globals.css`). That stops casual saving only — screenshots and the
+  network tab can't be blocked by any website; the watermark is the real protection.
 - `POST /api/revalidate` (Bearer `REVALIDATE_SECRET`, constant-time compare) is called by the
   agent app whenever a property changes and expires the `listings` tag immediately.
 - If the agent app is unreachable the pages show a friendly error/empty state instead of

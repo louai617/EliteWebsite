@@ -3,6 +3,7 @@
 import React from 'react';
 import Image from 'next/image';
 import Link from 'next/link';
+import { protectPhoto } from '@/lib/protect-photo';
 import { useTranslations, useLocale } from 'next-intl';
 import { Bed, Bath, Box, Maximize, MapPin, PlayCircle, ShieldCheck, Sparkles, ImageOff } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
@@ -41,7 +42,7 @@ const PropertyCard: React.FC<PropertyCardProps> = ({ property, footer }) => {
       href={`/${locale}/properties/${encodeURIComponent(property._id)}`}
       className="group block overflow-hidden rounded-2xl border border-gray-100 bg-white shadow-sm transition-shadow duration-300 hover:shadow-xl focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
     >
-      <div className="relative h-56 w-full overflow-hidden bg-gray-100">
+      <div className="protected-photo relative h-56 w-full overflow-hidden bg-gray-100" {...protectPhoto}>
         {cover ? (
           <Image
             src={cover}

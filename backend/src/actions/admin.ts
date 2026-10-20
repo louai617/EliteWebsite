@@ -4,9 +4,9 @@ import { authedAction } from "@/lib/action";
 import { z } from "zod";
 import { forbidden } from "@/lib/errors";
 import { can } from "@/lib/permissions";
-import { paymentSettingsSchema, settingsSchema } from "@/schemas/settings";
+import { paymentSettingsSchema, settingsSchema, watermarkSettingsSchema } from "@/schemas/settings";
 import { createUserSchema, updateUserSchema } from "@/schemas/user";
-import { updatePaymentSettings, updateSettings } from "@/services/settings";
+import { updatePaymentSettings, updateWatermarkSettings, updateSettings } from "@/services/settings";
 import { testEmail } from "@/services/email-templates";
 import { sendMail } from "@/services/mail";
 import { createUser, updateUser } from "@/services/users";
@@ -15,6 +15,9 @@ export const createUserAction = authedAction(createUserSchema, (input, user) => 
 export const updateUserAction = authedAction(updateUserSchema, (input, user) => updateUser(user, input), { message: "Team member updated" });
 export const updateSettingsAction = authedAction(settingsSchema, (input, user) => updateSettings(user, input), { message: "Settings saved" });
 export const updatePaymentSettingsAction = authedAction(paymentSettingsSchema, (input, user) => updatePaymentSettings(user, input), { message: "Payment settings saved" });
+export const updateWatermarkSettingsAction = authedAction(watermarkSettingsSchema, (input, user) => updateWatermarkSettings(user, input), {
+  message: (r) => ((r as { changed: boolean }).changed ? "Watermark saved — updating the photos in the background" : "Watermark saved"),
+});
 
 /** Sends the branded test e-mail to the signed-in admin. */
 export const sendTestEmailAction = authedAction(

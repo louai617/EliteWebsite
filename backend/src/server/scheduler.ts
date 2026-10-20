@@ -1,5 +1,6 @@
 import { runDailyRollover } from "@/services/daily";
 import { reassignStaleLeads } from "@/services/leads";
+import { refreshAllWatermarksInBackground } from "@/services/photo-watermark-job";
 import { expireUnpaidReservations } from "@/services/reservations";
 
 /**
@@ -13,6 +14,9 @@ import { expireUnpaidReservations } from "@/services/reservations";
  * Every 5 minutes it also applies the 24-hour lead rule (reassignStaleLeads): leads still New
  * with an agent after Settings.leadAutoReassignHours move to the admin; unpaid reservations past
  * their pay-by time are released.
+ *
+ * Every minute it also re-renders listing photos whose watermark is out of date (after the
+ * watermark settings changed, or photos uploaded before watermarking), a batch at a time.
  *
  * Disable with SCHEDULER_ENABLED=false when an external cron calls
  * POST /api/cron/daily-rollover instead (e.g. serverless hosting).
@@ -29,6 +33,7 @@ export function startScheduler(intervalMs = 60_000) {
     } catch (error) {
       console.error("[scheduler] daily rollover failed", error);
     }
+    refreshAllWatermarksInBackground();
     if (Date.now() - (g.__eliteLeadCheckAt ?? 0) >= LEAD_CHECK_MS) {
       g.__eliteLeadCheckAt = Date.now();
       try {

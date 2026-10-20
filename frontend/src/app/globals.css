@@ -45,3 +45,12 @@ body {
 .border-gold {
   border-color: #b98f42;
 }
+
+/* Listing photos: no long-press "Save image" (iOS), no selection or dragging (see lib/protect-photo.ts). */
+.protected-photo,
+.protected-photo img {
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-user-drag: none;
+}

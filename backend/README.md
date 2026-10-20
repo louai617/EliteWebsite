@@ -53,11 +53,11 @@ Change these before using real data.
 | --- | --- |
 | `npm run dev` / `build` / `start` | Next.js |
 | `npm run typecheck` / `lint` | `next typegen && tsc`, ESLint |
-| `npm test` | Service test-suites (RBAC, validation, commission, hierarchy, imports, tasks, daily reports & rollover, scoring, client isolation, public listings, website bookings, saved homes, recommendations, password reset, lead rules, deals, contracts, documents, reservations, listing media) on a throwaway `test.db` |
+| `npm test` | Service test-suites (RBAC, validation, commission, hierarchy, imports, tasks, daily reports & rollover, scoring, client isolation, public listings, website bookings, saved homes, recommendations, password reset, lead rules, deals, contracts, documents, reservations, listing media, photo pipeline, watermark) on a throwaway `test.db` |
 | `npm run db:backup` | Online copy of the SQLite database to `backups/` (do this before migrating) |
 | `npm run import:website-listings` | Import the website's former hard-coded listings (`samples/website-listings.json`); idempotent by reference |
 | `npm run db:sync` | Regenerate the Prisma client if the schema changed and apply pending migrations (runs automatically in development) |
-| `npm run photos:optimize` | Re-encode photos uploaded before the photo pipeline (upright, no metadata, WebP, thumbnails); `-- --dry-run` to preview |
+| `npm run photos:watermark` | Bring every uploaded photo up to date at once: keep a clean original of older photos, (re)make the watermarked public copies (also runs by itself in the background); `-- --dry-run` to count. `photos:optimize` is the same command |
 | `npm run cron:daily` | Run the daily rollover once (for a system cron) |
 | `npm run reports:backfill -- 30` | Finalize daily reports for past days that have none |
 | `npm run db:migrate` | `prisma migrate dev` |
@@ -205,7 +205,8 @@ Cookie-authenticated writes must come from an allowed origin (CSRF check); CORS 
 | Users | `GET/POST /users`, `GET/PUT /users/:id` (admins/managers) |
 | Clients | `GET/POST /clients`, `GET/PUT/DELETE /clients/:id` |
 | Leads | `GET/POST /leads`, `GET/PUT/DELETE /leads/:id`, `POST /leads/:id/status`, `POST /leads/:id/assign` |
-| Properties | `GET/POST /properties` (filters incl. `category`, `subcategory`), `GET /properties/categories`, `GET/PATCH/DELETE /properties/:id`, `POST /properties/:id/postings`, `POST /properties/:id/photos` (multipart `file`; optimized as above, returns the stored photo and `lowRes`) |
+| Properties | `GET/POST /properties` (filters incl. `category`, `subcategory`), `GET /properties/categories`, `GET/PATCH/DELETE /properties/:id`, `POST /properties/:id/postings`, `POST /properties/:id/photos` (multipart `file`; optimized as above, returns the stored photo and `lowRes`), `GET /properties/:id/photos/:photoId/original` (clean JPEG download; the listing's agent and managers) |
+| Settings | `GET /settings/watermark-preview?watermarkEnabled&watermarkPosition&watermarkSize&watermarkOpacity` (admins; WebP preview on the latest photo) |
 | Tasks | `GET/POST /tasks` (`scope=mine|team`, filters), `GET/PATCH/DELETE /tasks/:id`, `POST /tasks/:id/notes`, `POST /tasks/:id/assign`, `GET /tasks/workload`, `GET/POST /tasks/daily-templates`, `PUT/DELETE /tasks/daily-templates/:id` |
 | Activities | `GET/POST /activities`, `DELETE /activities/:id` |
 | Reports | `GET /reports?preset=today|yesterday|week|month|custom&from&to&agentId`, `GET /reports/daily?agentId&date`, `POST /reports/daily/submit` |
@@ -265,8 +266,30 @@ network errors, drag (or arrows) to reorder, ★ to choose the cover.
 - **Delivery**: CRM lists use the thumbnails; the website gets the blurred preview
   (`cover_blur`, `image_blurs`) and serves AVIF/WebP at the right size through Next's image
   optimizer. Removing a photo or a listing deletes its files.
-- Photos uploaded before this existed: `npm run photos:optimize` (add `-- --dry-run` to preview)
-  re-encodes them the same way. Photos pasted as URLs are left as they are.
+- Photos pasted as URLs are left as they are (no thumbnail, no watermark).
+
+#### Watermark and clean originals
+
+Every uploaded photo is kept twice (`services/photos.ts`, `services/watermark.ts`):
+
+| Copy | Where | Who gets it |
+| --- | --- | --- |
+| **Clean original** (upright, no metadata, ≤ 2560 px WebP) | `storage/photo-masters/properties/<id>/` — never served by `/api/uploads` | The listing's agent, managers and admins: ⬇ on a photo tile in **Manage photos** (`GET /properties/:id/photos/:photoId/original`, JPEG q92, `no-store`), e.g. for portals that refuse watermarked photos |
+| **Public copy** with the ELITE watermark + 640 px thumbnail | `storage/uploads/properties/<id>/` → `/api/uploads/...` | Everyone: the website, the public API, CRM tiles, social previews |
+
+- The mark is the ELITE logo turned white (gold → white, dark lines see-through) with a soft
+  shadow, so it reads on bright skies and dark rooms. **Settings → Photo watermark** (admins):
+  on/off, centre / bottom right / bottom left, size (10–60 % of the width, never taller than a
+  fifth of the photo) and opacity (10–90 %), with a live preview on the latest photo. Defaults:
+  on, centre, 30 %, 45 %.
+- Saving a change bumps `Settings.watermarkVersion`; `services/photo-watermark-job.ts` then
+  re-renders every public copy from its original in the background (batches of 20, also every
+  minute from the scheduler), under **new file names** so no browser or image cache keeps
+  the old mark, and deletes the old files. Thumbnails are made from the watermarked image.
+- Photos uploaded before watermarking (`masterKey` empty): their current file — still clean —
+  becomes the original, then the watermarked copy is published. This happens by itself after
+  the update; `npm run photos:watermark` does it all at once. A photo whose file is missing is
+  marked `watermarkVersion = -1` and skipped.
 
 ### Listing media
 
@@ -292,7 +315,8 @@ body. Password codes and reset tokens are stored only as keyed hashes (`OtpCode`
 A property is public when `websitePublished` is on and its status is `AVAILABLE` or
 `RESERVED`; the public endpoints select safe fields only (never owner, commission or internal
 notes). Photos of public listings are served from `/api/uploads/...` without a session; all
-other uploads still need one. Every property, image, deal and import change calls
+other uploads still need one. Only watermarked copies are ever under `/api/uploads`; the clean
+originals stay in `storage/photo-masters`. Every property, image, deal and import change calls
 `notifyWebsite()` (`src/services/website-sync.ts`, debounced), which POSTs to the website's
 `/api/revalidate`. Publishing records a *Property post* activity (outcome "Website") for the
 agent's daily report. Website bookings are `SCHEDULED` viewings with `bookedByClient`; they
@@ -405,7 +429,8 @@ filtered/sorted column. Money is stored in whole QAR (`Int`).
 ## Known limitations
 
 - Photo uploads are stored on local disk (`storage/uploads`, served via
-  `/api/uploads/...`; public only while the listing is live on the website). Use object storage (S3/R2) before running several
+  `/api/uploads/...`; public only while the listing is live on the website; clean originals in
+  `storage/photo-masters`, never served). Back up both folders. Use object storage (S3/R2) before running several
   instances; `src/services/storage.ts` is the only file to change.
 - The login rate limiter is in-memory (per process).
 - E-mail needs an SMTP account (`SMTP_*`). Until it is set, production password resets fall back

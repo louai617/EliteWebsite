@@ -77,8 +77,9 @@ the old deal statuses: *Negotiation / Contract pending / Contract signed* → **
 *Closed won* → **Closed**, *Closed lost* → **Cancelled**. The 24-hour clock for existing leads
 starts when you run the migration, so nothing is moved to the admin straight away.
 
-Photos uploaded before the photo optimization update can be optimized once with
-`npm run photos:optimize` (in `backend/`; `-- --dry-run` shows what it would do first).
+Photos uploaded before the watermark update get the watermark by themselves within a few
+minutes of starting the agent app (their current file is kept privately as the clean original).
+To do it all at once: `npm run photos:watermark` in `backend/` (`-- --dry-run` only counts).
 
 The `guest_reservations` migration (website without visitor accounts) only adds columns to
 reservations; every existing reservation, client and client-portal user is kept. Those old
@@ -135,7 +136,12 @@ accounts — change them before real use.
   section (also: Exclusive, Verified, Arabic title, completion, payment plan, nearby places).
   Save, then open http://localhost:3001/en/properties — it is there.
 - On a property, **Manage photos** adds more (drag & drop, click or paste), reorders them,
-  changes the cover or removes them.
+  changes the cover or removes them. The ⬇ on a photo downloads the clean original (no
+  watermark) — for the listing's agent and managers, e.g. to post on a portal.
+- Admin: **Settings → Photo watermark** — on/off, position, size and opacity with a live
+  preview. Every photo on the website carries it; saving a change re-applies it to all photos
+  in the background. Right-click / drag / long-press saving is turned off on the website's
+  photos (a screenshot can't be prevented — that is what the watermark is for).
 - Change its price, untick **Show on website**, or mark it *Sold*: the website follows.
 - **Videos, tours & floor plans** card on a property: paste a YouTube / Vimeo link or upload a
   video (MP4, MOV, WebM up to 200 MB), add a 360° tour (Matterport, Kuula or any link), upload
@@ -206,7 +212,7 @@ accounts — change them before real use.
 | --- | --- |
 | `npm test` | Runs all service tests on a separate test database (your data is not touched) |
 | `npm run import:website-listings` | Adds the website's original listings to the CRM (skips existing ones) |
-| `npm run photos:optimize` | Optimizes photos uploaded before the photo update (WebP, thumbnails, no location data) |
+| `npm run photos:watermark` | Watermarks every photo now (it also happens by itself in the background); keeps clean originals of older photos |
 | `npm run db:backup` | Copies the database to `backend/backups/` |
 | `npm run cron:daily` | Runs the end-of-day rollover by hand |
 | `npm run db:studio` | Opens a database browser |

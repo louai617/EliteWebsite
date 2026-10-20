@@ -16,6 +16,9 @@ const nextConfig = {
     formats: ['image/avif', 'image/webp'],
     // Keep optimized copies for a day (default 4 h); a removed photo still drops off within a day.
     minimumCacheTTL: 60 * 60 * 24,
+    // No 2048 / 3840 px variants: listing photos are never handed out bigger than 1920 px
+    // (smaller files, and less worth taking).
+    deviceSizes: [640, 750, 828, 1080, 1200, 1920],
     remotePatterns: [
       { protocol: 'https', hostname: 'images.unsplash.com' },
       { protocol: 'https', hostname: 'res.cloudinary.com' },
