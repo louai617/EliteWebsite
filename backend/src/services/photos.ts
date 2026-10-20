@@ -26,8 +26,8 @@ import { renderWatermarked, type WatermarkOptions } from "./watermark";
  * public copies are re-rendered in the background (services/photo-watermark-job.ts).
  */
 
-const ROOT = path.join(process.cwd(), "storage", "uploads");
-const MASTER_ROOT = path.join(process.cwd(), "storage", "photo-masters");
+const ROOT = path.join(/*turbopackIgnore: true*/ process.cwd(), "storage", "uploads");
+const MASTER_ROOT = path.join(/*turbopackIgnore: true*/ process.cwd(), "storage", "photo-masters");
 
 export const PHOTO_RULES = {
   /** Largest file accepted (the browser shrinks big photos before sending them). */

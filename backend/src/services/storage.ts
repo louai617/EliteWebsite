@@ -10,7 +10,9 @@ import { invalid } from "@/lib/errors";
  * served through an access-checked route and work in production builds); they are written by
  * services/photos.ts. Swap this module for S3/R2/Cloudinary later without touching callers.
  */
-const ROOT = path.join(process.cwd(), "storage", "uploads");
+// turbopackIgnore: uploaded files are data, not part of the build (the build must not scan them;
+// on the server ./storage is a link to shared storage outside the app).
+const ROOT = path.join(/*turbopackIgnore: true*/ process.cwd(), "storage", "uploads");
 export const PUBLIC_PREFIX = "/api/uploads/";
 
 function sniff(buf: Buffer): string | null {
@@ -53,7 +55,7 @@ export async function deleteUpload(url: string) {
  * passports…). Stored under ./storage/documents with random names and never served by a
  * public path: /api/documents/:id streams them after a permission check.
  */
-const DOCS_ROOT = path.join(process.cwd(), "storage", "documents");
+const DOCS_ROOT = path.join(/*turbopackIgnore: true*/ process.cwd(), "storage", "documents");
 export const MAX_DOCUMENT_BYTES = 10 * 1024 * 1024;
 export const DOCUMENT_TYPES: Record<string, string> = {
   "application/pdf": "pdf",
@@ -112,7 +114,7 @@ export function safeFileName(name: string, mimeType: string) {
  * /api/media/:id (with HTTP range support for video seeking). Uploads are written to disk
  * chunk by chunk, so a 200 MB video never sits in memory.
  */
-const MEDIA_ROOT = path.join(process.cwd(), "storage", "media");
+const MEDIA_ROOT = path.join(/*turbopackIgnore: true*/ process.cwd(), "storage", "media");
 
 export type UploadableMediaKind = "VIDEO" | "FLOOR_PLAN" | "BROCHURE";
 

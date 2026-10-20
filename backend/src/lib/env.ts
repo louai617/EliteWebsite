@@ -1,4 +1,5 @@
 import "server-only";
+import { requestOrigin } from "./cors";
 
 /**
  * Server-side configuration read from the environment. Nothing in here is ever sent to the
@@ -36,7 +37,7 @@ export const SCHEDULER_ENABLED = process.env.SCHEDULER_ENABLED !== "false";
 export const APP_URL = (process.env.APP_URL ?? "").replace(/\/+$/, "");
 
 export function publicOrigin(request: Request) {
-  return APP_URL || new URL(request.url).origin;
+  return APP_URL || requestOrigin(request);
 }
 
 /**

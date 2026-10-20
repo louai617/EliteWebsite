@@ -16,6 +16,7 @@ import { getPublicListing, listPublicListings, PUBLIC_STATUSES } from "@/service
 import { bookGuestViewing, bookingSlots } from "@/services/guest-bookings";
 import { createPublicLead } from "@/services/website-leads";
 import { testMailbox } from "@/services/mail";
+import { isSelfOrigin, requestOrigin } from "@/lib/cors";
 import type { Role } from "@/generated/prisma/enums";
 
 let pass = 0;
@@ -152,6 +153,15 @@ async function main() {
   const enquiry = await createPublicLead(publicLeadSchema.parse({ fullName: "Contact Form", phone: "+974 5000 7777", message: "Hi", propertyRef: hidden.reference }));
   const enquiryLead = await db.lead.findUniqueOrThrow({ where: { id: enquiry.id! }, include: { interests: true } });
   check("contact form lead goes to the listing agent with the listing attached", enquiryLead.agentId === omar.id && enquiryLead.interests.some((i) => i.propertyId === hidden.id));
+
+  // ── Same-origin check behind nginx (request.url keeps 127.0.0.1:3002) ──
+  const proxied = (origin: string, headers: Record<string, string> = { host: "app.eliterealestate.qa", "x-forwarded-proto": "https" }) =>
+    isSelfOrigin(new Request("http://127.0.0.1:3002/api/properties/x/photos", { method: "POST", headers }), origin);
+  check("behind the proxy the public origin comes from Host and X-Forwarded-Proto", requestOrigin(new Request("http://127.0.0.1:3002/api/x", { headers: { host: "app.eliterealestate.qa", "x-forwarded-proto": "https" } })) === "https://app.eliterealestate.qa");
+  check("uploads from the agent app's own pages pass behind the proxy", proxied("https://app.eliterealestate.qa"));
+  check("another site is still refused", !proxied("https://evil.example") && !proxied("https://eliterealestate.qa.evil.example"));
+  check("plain http is not the https site", !proxied("http://app.eliterealestate.qa"));
+  check("without a proxy the request's own origin works", isSelfOrigin(new Request("http://localhost:3002/api/x", { method: "POST", headers: { host: "localhost:3002" } }), "http://localhost:3002"));
 
   console.log(`website tests: ${pass} passed, ${fail} failed`);
   if (fail) process.exitCode = 1;

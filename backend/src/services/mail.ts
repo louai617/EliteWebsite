@@ -44,7 +44,7 @@ export function testMailbox() {
 }
 
 async function writeOutbox(to: string, template: string, email: RenderedEmail) {
-  const dir = path.join(process.cwd(), "storage", "outbox");
+  const dir = path.join(/*turbopackIgnore: true*/ process.cwd(), "storage", "outbox");
   await mkdir(/*turbopackIgnore: true*/ dir, { recursive: true });
   const buf = await logoFile();
   // Inline the logo so the saved file previews correctly.

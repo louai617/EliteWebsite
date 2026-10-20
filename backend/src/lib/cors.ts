@@ -19,6 +19,31 @@ export function isAllowedOrigin(origin: string | null | undefined) {
   return Boolean(origin && allowedOrigins().includes(normalize(origin)));
 }
 
+/** This app's public origin (APP_URL), e.g. https://app.eliterealestate.qa; empty when unset. */
+function configuredAppOrigin() {
+  return normalize(process.env.APP_URL ?? "");
+}
+
+/** The origin a request reached us on, as the browser sees it. */
+export function requestOrigin(request: Request) {
+  const url = new URL(request.url);
+  // Behind a reverse proxy (nginx) request.url keeps the address Next listens on
+  // (http://127.0.0.1:3002); the public host and scheme arrive in these headers.
+  const host = (request.headers.get("x-forwarded-host") ?? request.headers.get("host") ?? "").split(",")[0].trim();
+  const proto = (request.headers.get("x-forwarded-proto") ?? "").split(",")[0].trim() || url.protocol.replace(":", "");
+  return host ? normalize(`${proto}://${host}`) : url.origin;
+}
+
+/**
+ * Whether `origin` (a browser's Origin header) is this app itself. A cross-site page can't
+ * forge the Host header its request is sent with, so the header-based origin is as safe for
+ * this check as request.url — it just also works behind a proxy.
+ */
+export function isSelfOrigin(request: Request, origin: string) {
+  const o = normalize(origin);
+  return o === new URL(request.url).origin || o === requestOrigin(request) || (configuredAppOrigin() !== "" && o === configuredAppOrigin());
+}
+
 export const CORS_ALLOWED_METHODS = "GET, POST, PUT, PATCH, DELETE, OPTIONS";
 export const CORS_ALLOWED_HEADERS = "Content-Type, Authorization, X-Requested-With";
 

@@ -4,6 +4,7 @@ import { forbidden, toPublicError, unauthorized } from "@/lib/errors";
 import { isStaff } from "@/lib/permissions";
 import { rateLimit } from "@/lib/rate-limit";
 import { zodFieldErrors } from "@/lib/action";
+import { isSelfOrigin } from "@/lib/cors";
 import { mediaUploadQuery } from "@/schemas/media";
 import { uploadMedia } from "@/services/property-media";
 
@@ -15,9 +16,8 @@ import { uploadMedia } from "@/services/property-media";
  */
 export async function POST(request: Request, { params }: RouteContext<"/api/media-upload/[propertyId]">) {
   try {
-    const self = new URL(request.url).origin;
     const origin = request.headers.get("origin");
-    if (origin && origin !== self) throw forbidden("Cross-origin upload blocked.");
+    if (origin && !isSelfOrigin(request, origin)) throw forbidden("Cross-origin upload blocked.");
     const user = await getCurrentUser();
     if (!user) throw unauthorized();
     if (!isStaff(user)) throw forbidden();

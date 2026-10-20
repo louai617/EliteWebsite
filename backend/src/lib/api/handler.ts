@@ -3,7 +3,7 @@ import { cookies } from "next/headers";
 import { z } from "zod";
 import { SESSION_COOKIE } from "@/lib/auth/constants";
 import { getCurrentUser, resolveSession, type SessionUser } from "@/lib/auth/session";
-import { isAllowedOrigin } from "@/lib/cors";
+import { isAllowedOrigin, isSelfOrigin } from "@/lib/cors";
 import { AppError, forbidden, toPublicError } from "@/lib/errors";
 import { hasPermission, isStaff, type Permission } from "@/lib/permissions";
 import { rateLimit } from "@/lib/rate-limit";
@@ -79,8 +79,7 @@ function originAllowed(request: Request) {
     const fetchSite = request.headers.get("sec-fetch-site");
     return !fetchSite || fetchSite === "same-origin" || fetchSite === "none";
   }
-  const self = new URL(request.url).origin;
-  return origin === self || isAllowedOrigin(origin);
+  return isSelfOrigin(request, origin) || isAllowedOrigin(origin);
 }
 
 async function parseBody(request: Request, multipart = false) {

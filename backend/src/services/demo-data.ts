@@ -14,7 +14,7 @@ import { PUBLIC_PREFIX } from "./storage";
  * to `moveFilesTo` when given (so nothing is lost for good), otherwise deleted.
  */
 
-const STORAGE = path.join(process.cwd(), "storage");
+const STORAGE = path.join(/*turbopackIgnore: true*/ process.cwd(), "storage");
 
 /** Placeholder payment details from the demo seed (cleared, so nobody is told to pay them). */
 const DEMO_PAYMENT = {
