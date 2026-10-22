@@ -353,8 +353,6 @@ model User {
   passDecisions        LeadPassRequest[]   @relation("PassDecider")
   poolLeadsAdded       PoolLead[]          @relation("PoolLeadCreator")
   poolLeadsTaken       PoolLead[]          @relation("PoolLeadTaker")
-  poolRequests         PoolLeadRequest[]   @relation("PoolRequester")
-  poolDecisions        PoolLeadRequest[]   @relation("PoolDecider")
   editedTemplates      ContractTemplate[]
   propertyMedia        PropertyMedia[]
   contracts            Contract[]
@@ -1271,7 +1269,7 @@ model LeadPassRequest {
 // ───────────────────────────── Leads pool ─────────────────────────────
 
 enum PoolLeadStatus {
-  /// In the pool: agents see a masked number and can ask for it.
+  /// In the pool: agents see a masked number until they take it.
   AVAILABLE
   /// Given to an agent — it is now a lead on the Leads page.
   TAKEN
@@ -1280,7 +1278,8 @@ enum PoolLeadStatus {
 /**
  * A contact waiting in the leads pool (added by managers/admins): a buyer or tenant with their
  * needs, or just a private owner's number. Only the phone is required. Agents see the number
- * masked (+9745********7) until a manager approves their request; it then becomes a Lead.
+ * masked (+9745********7) until they take it (or a manager gives it to them); it then
+ * becomes a Lead on their Leads page.
  */
 model PoolLead {
   id             String          @id @default(cuid())
@@ -1297,6 +1296,8 @@ model PoolLead {
   bedrooms       Int?
   notes          String?
   status         PoolLeadStatus  @default(AVAILABLE)
+  /// The spreadsheet (or paste) it came in with, e.g. "owners-lusail.xlsx · 22 Oct 10:41".
+  batch          String?
 
   createdById String?
   createdBy   User?   @relation("PoolLeadCreator", fields: [createdById], references: [id], onDelete: SetNull)
@@ -1310,29 +1311,9 @@ model PoolLead {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
-  requests PoolLeadRequest[]
-
   @@index([status, createdAt])
   @@index([phoneDigits])
-}
-
-/** An agent asking for a pool lead ("Get this lead"); a manager approves or rejects it. */
-model PoolLeadRequest {
-  id            String            @id @default(cuid())
-  poolLeadId    String
-  poolLead      PoolLead          @relation(fields: [poolLeadId], references: [id], onDelete: Cascade)
-  status        PassRequestStatus @default(PENDING)
-  requestedById String
-  requestedBy   User              @relation("PoolRequester", fields: [requestedById], references: [id], onDelete: Cascade)
-  decidedById   String?
-  decidedBy     User?             @relation("PoolDecider", fields: [decidedById], references: [id], onDelete: SetNull)
-  decidedAt     DateTime?
-  decisionNote  String?
-  createdAt     DateTime          @default(now())
-
-  @@index([poolLeadId, status])
-  @@index([requestedById, status])
-  @@index([status, createdAt])
+  @@index([batch])
 }
 
 // ───────────────────────────── Password reset & e-mail ─────────────────────────────

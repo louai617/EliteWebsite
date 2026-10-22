@@ -8,30 +8,33 @@ import { isManager, isStaff, type Actor } from "@/lib/permissions";
 import { paginate, skipTake, type ListParams } from "@/lib/list-params";
 import { digitsOnly, like, maskEmail, maskPhone, maskPhonesIn } from "@/lib/search";
 import { phone as phoneRule } from "@/schemas/common";
-import type { poolAssignSchema, poolBulkSchema, poolDecisionSchema, poolLeadSchema, updatePoolLeadSchema } from "@/schemas/leads-pool";
+import type { poolAssignManySchema, poolBulkSchema, poolLeadSchema, updatePoolLeadSchema } from "@/schemas/leads-pool";
 import { logActivity } from "./activity";
 import { assertActiveUser } from "./access";
 import { onLeadAssigned } from "./automation";
-import { escalationUser } from "./leads";
+import { readPoolSheet, type PoolSheetRow } from "./pool-import";
 import type { Tx } from "./types";
 
 /**
  * The leads pool: contacts managers and admins collect (buyers, tenants with their needs, or
- * just a private owner's number). Agents browse it with the numbers masked and ask for a lead
- * ("Get this lead"); once a manager approves, it becomes a normal lead on the agent's Leads
- * page, with the full details. Masking happens here on the server — an agent's browser never
- * receives a pool number it hasn't been given.
+ * just a private owner's number) — typed in, pasted, or imported from an Excel / CSV file.
+ * Agents browse it with the numbers masked and press "Get this lead": it becomes a normal lead
+ * on their Leads page at once, with the full details. Managers can also tick entries and give
+ * them to an agent. Masking happens here on the server — an agent's browser never receives a
+ * pool number that isn't theirs.
  */
 
 export const POOL_SORTS = ["createdAt", "fullName", "budgetMax"] as const;
 
-/** How many requests an agent may have waiting at once (so nobody reserves the whole pool). */
-export const MAX_PENDING_REQUESTS = 10;
+/** Most entries given in one go (select up to a page of 100). */
+export const MAX_ASSIGN = 100;
 
 export interface PoolFilters {
   status?: PoolLeadStatus;
   leadType?: CustomerType;
   purpose?: ListingPurpose;
+  /** Managers: only the entries of one import. */
+  batch?: string;
 }
 
 function poolWhere(actor: Actor, q: string | undefined, f: PoolFilters): Prisma.PoolLeadWhereInput {
@@ -41,9 +44,9 @@ function poolWhere(actor: Actor, q: string | undefined, f: PoolFilters): Prisma.
     AND: [
       // Agents only ever see what is still in the pool.
       manager ? (f.status ? { status: f.status } : {}) : { status: "AVAILABLE" },
-      // Agents can't search by digits at all: matching them against the stored notes or names
-      // would reveal hidden numbers bit by bit.
-      q && !manager && /[0-9]{3}/.test(q.replace(/[^0-9]/g, ""))
+      // Agents can't search by digits at all: matching them against the stored numbers, notes
+      // or names would reveal hidden numbers bit by bit.
+      q && !manager && /[0-9]{3}/.test(digits)
         ? { id: { in: [] } }
         : q
         ? {
@@ -51,14 +54,14 @@ function poolWhere(actor: Actor, q: string | undefined, f: PoolFilters): Prisma.
               { fullName: like(q) },
               { interestedArea: like(q) },
               { notes: like(q) },
-              // Searching by number would let agents guess the hidden digits — managers only.
               ...(manager && digits.length >= 3 ? [{ phoneDigits: like(digits) }] : []),
-              ...(manager ? [{ email: like(q) }] : []),
+              ...(manager ? [{ email: like(q) }, { batch: like(q) }] : []),
             ],
           }
         : {},
       f.leadType ? { leadType: f.leadType } : {},
       f.purpose ? { purpose: f.purpose } : {},
+      manager && f.batch ? { batch: f.batch } : {},
     ],
   };
 }
@@ -76,6 +79,7 @@ const poolSelect = {
   bedrooms: true,
   notes: true,
   status: true,
+  batch: true,
   createdAt: true,
   takenAt: true,
   leadId: true,
@@ -85,35 +89,32 @@ const poolSelect = {
 
 type PoolRow = Prisma.PoolLeadGetPayload<{ select: typeof poolSelect }>;
 
-export interface PoolListItem extends Omit<PoolRow, "phone" | "email" | "createdBy" | "takenBy" | "leadId"> {
+export interface PoolListItem extends Omit<PoolRow, "phone" | "email" | "createdBy" | "takenBy" | "leadId" | "batch"> {
   /** The full number for managers; masked (+9745******7) for agents. */
   phone: string;
   email: string | null;
   masked: boolean;
+  batch: string | null;
   createdBy: { name: string } | null;
   takenBy: { id: string; name: string; avatarUrl: string | null } | null;
   leadId: string | null;
-  /** Agents: their own request on this entry. Managers: how many requests are waiting. */
-  myRequest: { id: string; status: "PENDING" | "APPROVED" | "REJECTED" } | null;
-  pendingRequests: number;
 }
 
 /** What an agent may see of a pool entry. */
-function forViewer(actor: Actor, row: PoolRow, myRequest: PoolListItem["myRequest"], pendingRequests: number): PoolListItem {
-  if (isManager(actor)) return { ...row, masked: false, myRequest, pendingRequests };
+function forViewer(actor: Actor, row: PoolRow): PoolListItem {
+  if (isManager(actor)) return { ...row, masked: false };
   return {
     ...row,
     phone: maskPhone(row.phone),
     email: row.email ? maskEmail(row.email) : null,
-    // A number typed into the name or the notes stays hidden too.
+    // A number (or e-mail) typed into the name or the notes stays hidden too.
     fullName: row.fullName && maskPhonesIn(row.fullName),
     notes: row.notes && maskPhonesIn(row.notes.replace(/[^\s@]+@[^\s@]+\.[a-z]{2,}/gi, (e) => maskEmail(e))),
     masked: true,
+    batch: null,
     createdBy: null,
     takenBy: null,
     leadId: null,
-    myRequest,
-    pendingRequests: 0,
   };
 }
 
@@ -124,66 +125,28 @@ export async function listPool(actor: Actor, params: ListParams<(typeof POOL_SOR
     db.poolLead.findMany({ where, orderBy: [{ [params.sort]: params.dir }, { createdAt: "desc" }], ...skipTake(params.page, params.pageSize), select: poolSelect }),
     db.poolLead.count({ where }),
   ]);
-  const ids = rows.map((r) => r.id);
-  const [mine, pending] = await Promise.all([
-    db.poolLeadRequest.findMany({ where: { poolLeadId: { in: ids }, requestedById: actor.id }, orderBy: { createdAt: "asc" }, select: { id: true, poolLeadId: true, status: true } }),
-    isManager(actor) ? db.poolLeadRequest.groupBy({ by: ["poolLeadId"], where: { poolLeadId: { in: ids }, status: "PENDING" }, _count: { _all: true } }) : [],
-  ]);
-  const myRequest = new Map(mine.map((r) => [r.poolLeadId, { id: r.id, status: r.status }]));
-  const pendingCount = new Map(pending.map((p) => [p.poolLeadId, p._count._all]));
-  const items = rows.map((row) => forViewer(actor, row, myRequest.get(row.id) ?? null, pendingCount.get(row.id) ?? 0));
-  return paginate(items, total, params.page, params.pageSize);
+  return paginate(
+    rows.map((row) => forViewer(actor, row)),
+    total,
+    params.page,
+    params.pageSize,
+  );
 }
 
 export async function poolCounts(actor: Actor) {
-  const [available, taken, pending] = await Promise.all([
-    db.poolLead.count({ where: { status: "AVAILABLE" } }),
-    isManager(actor) ? db.poolLead.count({ where: { status: "TAKEN" } }) : 0,
-    isManager(actor) ? db.poolLeadRequest.count({ where: { status: "PENDING" } }) : db.poolLeadRequest.count({ where: { status: "PENDING", requestedById: actor.id } }),
-  ]);
-  return { available, taken, pending };
+  const [available, taken] = await Promise.all([db.poolLead.count({ where: { status: "AVAILABLE" } }), isManager(actor) ? db.poolLead.count({ where: { status: "TAKEN" } }) : 0]);
+  return { available, taken };
 }
 
-/** Managers: the requests waiting for a decision, with the full contact. */
-export async function listPendingPoolRequests(actor: Actor) {
+/** Managers: recent imports, for the "From file" filter. */
+export async function poolBatches(actor: Actor) {
   if (!isManager(actor)) return [];
-  return db.poolLeadRequest.findMany({
-    where: { status: "PENDING" },
-    orderBy: { createdAt: "asc" },
-    take: 100,
-    select: {
-      id: true,
-      createdAt: true,
-      requestedBy: { select: { id: true, name: true, avatarUrl: true } },
-      poolLead: { select: { id: true, phone: true, fullName: true, leadType: true, purpose: true, interestedArea: true, notes: true } },
-    },
-  });
+  const rows = await db.poolLead.groupBy({ by: ["batch"], where: { batch: { not: null }, status: "AVAILABLE" }, _count: { _all: true }, _max: { createdAt: true } });
+  return rows
+    .sort((a, b) => (b._max.createdAt?.getTime() ?? 0) - (a._max.createdAt?.getTime() ?? 0))
+    .slice(0, 30)
+    .map((r) => ({ batch: r.batch!, available: r._count._all }));
 }
-
-export type PendingPoolRequest = Awaited<ReturnType<typeof listPendingPoolRequests>>[number];
-
-/** Agents: their recent requests and how they went (approved ones link to the new lead). */
-export async function listMyPoolRequests(actor: Actor) {
-  const rows = await db.poolLeadRequest.findMany({
-    where: { requestedById: actor.id, OR: [{ status: "PENDING" }, { decidedAt: { gte: new Date(Date.now() - 14 * 86_400_000) } }] },
-    orderBy: { createdAt: "desc" },
-    take: 30,
-    select: {
-      id: true,
-      status: true,
-      createdAt: true,
-      decidedAt: true,
-      decisionNote: true,
-      poolLead: { select: { phone: true, fullName: true, leadId: true, takenById: true } },
-    },
-  });
-  return rows.map(({ poolLead, ...r }) => {
-    const mine = r.status === "APPROVED" && poolLead.takenById === actor.id;
-    return { ...r, fullName: poolLead.fullName && (mine ? poolLead.fullName : maskPhonesIn(poolLead.fullName)), phone: mine ? poolLead.phone : maskPhone(poolLead.phone), leadId: mine ? poolLead.leadId : null };
-  });
-}
-
-export type MyPoolRequest = Awaited<ReturnType<typeof listMyPoolRequests>>[number];
 
 // ───────────────────────────── Adding ─────────────────────────────
 
@@ -191,7 +154,7 @@ function assertManager(actor: Actor) {
   if (!isManager(actor)) throw forbidden("Only managers and admins can manage the leads pool.");
 }
 
-/** Short label for logs and tasks — never the full number. */
+/** Short label for logs — never the full number. */
 const label = (p: { fullName: string | null; phone: string }) => (p.fullName ? `${p.fullName} (${maskPhone(p.phone)})` : maskPhone(p.phone));
 
 async function duplicateInPool(digits: string, exceptId?: string) {
@@ -217,33 +180,15 @@ export async function addPoolLead(actor: Actor, input: z.output<typeof poolLeadS
   return { id: row.id, alreadyLead: known[0] ? { id: known[0].id, fullName: known[0].fullName, agent: known[0].agent?.name ?? null } : null };
 }
 
-/** Parses pasted lines: the first phone-like part of each line, the rest is the name. */
-export function parsePoolLines(text: string) {
-  const out: { line: number; phone: string; fullName: string | null }[] = [];
-  const skipped: { line: number; text: string; reason: string }[] = [];
-  text.split(/\r?\n/).forEach((raw, i) => {
-    const line = raw.trim();
-    if (!line) return;
-    const match = line.match(/\+?[0-9][0-9 ()-]{6,19}[0-9]/);
-    const phone = match?.[0].trim();
-    if (!phone || !phoneRule.safeParse(phone).success) {
-      skipped.push({ line: i + 1, text: line.slice(0, 80), reason: "No valid phone number" });
-      return;
-    }
-    const rest = line.replace(match![0], " ").replace(/^[\s,;:|\t-]+|[\s,;:|\t-]+$/g, "").replace(/\s{2,}/g, " ");
-    out.push({ line: i + 1, phone, fullName: rest ? rest.slice(0, 120) : null });
-  });
-  return { rows: out, skipped };
-}
+type Skipped = { line: number; text: string; reason: string };
 
-export async function addPoolLeadsBulk(actor: Actor, input: z.output<typeof poolBulkSchema>) {
-  assertManager(actor);
-  const { rows, skipped } = parsePoolLines(input.lines);
-  if (rows.length > 1000) throw invalid("Paste up to 1,000 numbers at a time.", { lines: ["Too many lines"] });
+/** Adds many rows at once, skipping numbers already in the pool (or repeated in the batch). */
+async function insertRows(actor: Actor, rows: PoolSheetRow[], skipped: Skipped[], batch: string, source: string) {
+  if (rows.length > 5000) throw invalid("Import up to 5,000 numbers at a time — split the file.", { file: ["Too many rows"] });
   const existing = new Set(
     (await db.poolLead.findMany({ where: { status: "AVAILABLE", phoneDigits: { in: rows.map((r) => digitsOnly(r.phone)) } }, select: { phoneDigits: true } })).map((r) => r.phoneDigits),
   );
-  const fresh: typeof rows = [];
+  const fresh: PoolSheetRow[] = [];
   for (const row of rows) {
     const digits = digitsOnly(row.phone);
     if (existing.has(digits)) {
@@ -254,26 +199,57 @@ export async function addPoolLeadsBulk(actor: Actor, input: z.output<typeof pool
     fresh.push(row);
   }
   if (fresh.length) {
-    await db.$transaction(async (tx) => {
-      await tx.poolLead.createMany({
-        data: fresh.map((r) => ({
-          phone: r.phone,
-          phoneDigits: digitsOnly(r.phone),
-          fullName: r.fullName,
-          leadType: input.leadType,
-          purpose: input.purpose,
-          notes: input.notes,
-          createdById: actor.id,
-        })),
-      });
-      await logActivity(tx, {
-        action: "CREATED", entityType: "POOL_LEAD", entityId: "bulk", entityLabel: `${fresh.length} numbers`,
-        description: `Added ${fresh.length} number${fresh.length === 1 ? "" : "s"} to the leads pool`, userId: actor.id, meta: { count: fresh.length },
-      });
-    });
+    await db.$transaction(
+      async (tx) => {
+        await tx.poolLead.createMany({ data: fresh.map(({ line: _line, ...r }) => ({ ...r, phoneDigits: digitsOnly(r.phone), batch, createdById: actor.id })) });
+        await logActivity(tx, {
+          action: "CREATED", entityType: "POOL_LEAD", entityId: "bulk", entityLabel: `${fresh.length} numbers`,
+          description: `Added ${fresh.length} number${fresh.length === 1 ? "" : "s"} to the leads pool from ${source}`, userId: actor.id, meta: { count: fresh.length, batch },
+        });
+      },
+      { timeout: 60_000 },
+    );
   }
   skipped.sort((a, b) => a.line - b.line);
-  return { added: fresh.length, skipped };
+  return { added: fresh.length, skipped: skipped.slice(0, 200), skippedCount: skipped.length, batch };
+}
+
+const stamp = () => new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit", timeZone: "Asia/Qatar" }).format(new Date());
+
+/** Parses pasted lines: the first phone-like part of each line, the rest is the name. */
+export function parsePoolLines(text: string) {
+  const rows: { line: number; phone: string; fullName: string | null }[] = [];
+  const skipped: Skipped[] = [];
+  text.split(/\r?\n/).forEach((raw, i) => {
+    const line = raw.trim();
+    if (!line) return;
+    const match = line.match(/\+?[0-9][0-9 ()-]{6,19}[0-9]/);
+    const phone = match?.[0].trim();
+    if (!phone || !phoneRule.safeParse(phone).success) {
+      skipped.push({ line: i + 1, text: line.slice(0, 80), reason: "No valid phone number" });
+      return;
+    }
+    const rest = line.replace(match![0], " ").replace(/^[\s,;:|\t-]+|[\s,;:|\t-]+$/g, "").replace(/\s{2,}/g, " ");
+    rows.push({ line: i + 1, phone, fullName: rest ? rest.slice(0, 120) : null });
+  });
+  return { rows, skipped };
+}
+
+export async function addPoolLeadsBulk(actor: Actor, input: z.output<typeof poolBulkSchema>) {
+  assertManager(actor);
+  const { rows, skipped } = parsePoolLines(input.lines);
+  const full: PoolSheetRow[] = rows.map((r) => ({ ...r, email: null, leadType: input.leadType, purpose: input.purpose, interestedArea: null, budgetMin: null, budgetMax: null, bedrooms: null, notes: input.notes }));
+  return insertRows(actor, full, skipped, `Pasted list · ${stamp()}`, "a pasted list");
+}
+
+/** Excel (.xlsx) or CSV: columns are recognised by their headings (see pool-import.ts). */
+export async function importPoolFile(actor: Actor, file: File) {
+  assertManager(actor);
+  const { rows, skipped, columns } = await readPoolSheet(file);
+  if (!rows.length && !skipped.length) throw invalid("The file has no rows.", { file: ["Empty file"] });
+  const name = file.name.replace(/[^\p{L}\p{N} ._()-]/gu, "").slice(0, 60) || "spreadsheet";
+  const result = await insertRows(actor, rows, skipped, `${name} · ${stamp()}`, name);
+  return { ...result, columns };
 }
 
 export async function updatePoolLead(actor: Actor, input: z.output<typeof updatePoolLeadSchema>) {
@@ -291,28 +267,30 @@ export async function updatePoolLead(actor: Actor, input: z.output<typeof update
   });
 }
 
-/** Removes an entry from the pool. A lead already created from it stays on the Leads page. */
-export async function deletePoolLead(actor: Actor, id: string) {
+/** Removes entries from the pool. A lead already created from one stays on the Leads page. */
+export async function deletePoolLeads(actor: Actor, ids: string[]) {
   assertManager(actor);
-  const row = await db.poolLead.findUnique({ where: { id }, select: { id: true, fullName: true, phone: true } });
-  if (!row) throw notFound("Pool lead");
+  const rows = await db.poolLead.findMany({ where: { id: { in: ids } }, select: { id: true, fullName: true, phone: true } });
+  if (!rows.length) throw notFound("Pool lead");
   await db.$transaction(async (tx) => {
-    await tx.task.updateMany({ where: { autoKey: { startsWith: `pool-request:${id}:` }, status: { in: ["TODO", "IN_PROGRESS"] } }, data: { status: "CANCELLED" } });
-    await tx.poolLead.delete({ where: { id } });
-    await logActivity(tx, { action: "DELETED", entityType: "POOL_LEAD", entityId: id, entityLabel: label(row), description: `Removed ${label(row)} from the leads pool`, userId: actor.id });
+    await tx.poolLead.deleteMany({ where: { id: { in: rows.map((r) => r.id) } } });
+    await logActivity(tx, {
+      action: "DELETED", entityType: "POOL_LEAD", entityId: rows.length === 1 ? rows[0].id : "bulk", entityLabel: rows.length === 1 ? label(rows[0]) : `${rows.length} numbers`,
+      description: rows.length === 1 ? `Removed ${label(rows[0])} from the leads pool` : `Removed ${rows.length} numbers from the leads pool`, userId: actor.id,
+    });
   });
+  return { removed: rows.length };
 }
 
-// ───────────────────────────── Getting a lead ─────────────────────────────
+// ───────────────────────────── Giving out ─────────────────────────────
 
 /**
  * Turns a pool entry into a lead for `agentId` (inside a transaction). The entry is claimed
- * with a conditional update, so two approvals at the same moment can't both succeed.
+ * with a conditional update, so two agents pressing at the same moment can't both get it.
  */
-async function giveInTx(tx: Tx, actor: Actor, poolLeadId: string, agentId: string) {
+async function giveInTx(tx: Tx, actor: Actor, poolLeadId: string, agentId: string, agentName: string) {
   const pool = await tx.poolLead.findUnique({ where: { id: poolLeadId } });
-  if (!pool) throw notFound("Pool lead");
-  if (pool.status !== "AVAILABLE") throw conflict("This lead was already given to an agent.");
+  if (!pool || pool.status !== "AVAILABLE") return null;
   const now = new Date();
   const lead = await tx.lead.create({
     data: {
@@ -333,114 +311,41 @@ async function giveInTx(tx: Tx, actor: Actor, poolLeadId: string, agentId: strin
     select: { id: true, fullName: true, status: true, agentId: true },
   });
   const claimed = await tx.poolLead.updateMany({ where: { id: pool.id, status: "AVAILABLE" }, data: { status: "TAKEN", takenById: agentId, takenAt: now, leadId: lead.id } });
-  if (claimed.count !== 1) throw conflict("This lead was already given to an agent.");
-
-  // Settle every other request for this entry.
-  const others = await tx.poolLeadRequest.findMany({ where: { poolLeadId: pool.id, status: "PENDING" }, select: { id: true, requestedById: true } });
-  for (const r of others) {
-    const approved = r.requestedById === agentId;
-    await tx.poolLeadRequest.update({
-      where: { id: r.id },
-      data: { status: approved ? "APPROVED" : "REJECTED", decidedById: actor.id, decidedAt: now, ...(approved ? {} : { decisionNote: "Given to another agent" }) },
-    });
-  }
-  await tx.task.updateMany({ where: { autoKey: { startsWith: `pool-request:${pool.id}:` }, status: { in: ["TODO", "IN_PROGRESS"] } }, data: { status: "COMPLETED", completedAt: now } });
-
+  if (claimed.count !== 1) throw conflict("Someone else just took this lead.");
   await onLeadAssigned(tx, lead, actor.id);
-  const agent = await tx.user.findUnique({ where: { id: agentId }, select: { name: true } });
   await logActivity(tx, {
     action: "CREATED", entityType: "LEAD", entityId: lead.id, entityLabel: lead.fullName, userId: actor.id, leadId: lead.id,
-    description: agentId === actor.id ? `Took ${lead.fullName} from the leads pool` : `Gave ${lead.fullName} from the leads pool to ${agent?.name}`,
+    description: agentId === actor.id ? `Took ${lead.fullName} from the leads pool` : `Gave ${lead.fullName} from the leads pool to ${agentName}`,
     meta: { poolLeadId: pool.id, agentId },
   });
-  await logActivity(tx, {
-    action: "ASSIGNED", entityType: "POOL_LEAD", entityId: pool.id, entityLabel: label(pool), userId: actor.id, leadId: lead.id,
-    description: `${label(pool)} left the leads pool — now a lead of ${agent?.name}`,
-  });
-  return { leadId: lead.id };
+  return lead.id;
 }
 
-/**
- * "Get this lead". An agent's request goes to the management for approval; a manager or
- * admin takes the lead straight away.
- */
-export async function requestPoolLead(actor: Actor, id: string) {
+/** "Get this lead": the entry becomes a lead of whoever pressed it, straight away. */
+export async function takePoolLead(actor: Actor, id: string) {
   if (!isStaff(actor)) throw forbidden();
-  const pool = await db.poolLead.findUnique({ where: { id }, select: { id: true, status: true, fullName: true, phone: true, leadType: true, purpose: true, interestedArea: true } });
-  if (!pool || pool.status !== "AVAILABLE") throw notFound("Pool lead");
-
-  if (isManager(actor)) {
-    const { leadId } = await db.$transaction((tx) => giveInTx(tx, actor, id, actor.id));
-    return { status: "APPROVED" as const, leadId };
-  }
-
-  const [mine, waiting] = await Promise.all([
-    db.poolLeadRequest.findFirst({ where: { poolLeadId: id, requestedById: actor.id, status: "PENDING" }, select: { id: true } }),
-    db.poolLeadRequest.count({ where: { requestedById: actor.id, status: "PENDING" } }),
-  ]);
-  if (mine) throw conflict("You already asked for this lead — a manager will review it.");
-  if (waiting >= MAX_PENDING_REQUESTS) throw conflict(`You have ${waiting} requests waiting. Wait for a decision (or cancel one) before asking for more.`);
-
-  return db.$transaction(async (tx) => {
-    const request = await tx.poolLeadRequest.create({ data: { poolLeadId: id, requestedById: actor.id }, select: { id: true } });
-    const [approver, agent] = await Promise.all([escalationUser(tx), tx.user.findUnique({ where: { id: actor.id }, select: { name: true } })]);
-    const needs = [pool.leadType && pool.leadType.toLowerCase(), pool.purpose && `for ${pool.purpose.toLowerCase()}`, pool.interestedArea && `in ${pool.interestedArea}`].filter(Boolean).join(" ");
-    await tx.task.create({
-      data: {
-        title: `Approve leads pool request — ${agent?.name} wants ${pool.fullName ?? "a pool lead"}`,
-        description: `${agent?.name} asked for ${label(pool)}${needs ? ` (${needs})` : ""}. Approve or reject it in Leads pool.`,
-        type: "LEAD_FOLLOW_UP", priority: "HIGH", dueDate: new Date(Date.now() + 4 * 3_600_000),
-        assigneeId: approver?.id ?? null, createdById: actor.id, autoKey: `pool-request:${id}:${request.id}`,
-        events: { create: { type: "CREATED", actorId: actor.id, message: "Created automatically from a leads pool request" } },
-      },
-    });
-    await logActivity(tx, { action: "UPDATED", entityType: "POOL_LEAD", entityId: id, entityLabel: label(pool), description: `Asked for ${label(pool)} from the leads pool`, userId: actor.id });
-    return { status: "PENDING" as const, leadId: null };
-  });
+  const me = await db.user.findUniqueOrThrow({ where: { id: actor.id }, select: { name: true } });
+  const leadId = await db.$transaction((tx) => giveInTx(tx, actor, id, actor.id, me.name));
+  if (!leadId) throw conflict("This lead is no longer in the pool — someone else took it.");
+  return { leadId };
 }
 
-/** The agent withdraws their own waiting request. */
-export async function cancelPoolRequest(actor: Actor, requestId: string) {
-  const request = await db.poolLeadRequest.findUnique({ where: { id: requestId }, select: { id: true, status: true, requestedById: true, poolLeadId: true } });
-  if (!request || request.requestedById !== actor.id) throw notFound("Request");
-  if (request.status !== "PENDING") throw conflict("This request was already decided.");
-  await db.$transaction(async (tx) => {
-    await tx.poolLeadRequest.delete({ where: { id: request.id } });
-    await tx.task.updateMany({ where: { autoKey: `pool-request:${request.poolLeadId}:${request.id}`, status: { in: ["TODO", "IN_PROGRESS"] } }, data: { status: "CANCELLED" } });
-  });
-}
-
-export async function decidePoolRequest(actor: Actor, input: z.output<typeof poolDecisionSchema>) {
-  assertManager(actor);
-  const request = await db.poolLeadRequest.findUnique({
-    where: { id: input.requestId },
-    select: { id: true, status: true, poolLeadId: true, requestedById: true, requestedBy: { select: { name: true, isActive: true } }, poolLead: { select: { fullName: true, phone: true } } },
-  });
-  if (!request) throw notFound("Request");
-  if (request.status !== "PENDING") throw conflict("This request was already decided.");
-
-  if (input.approve) {
-    if (!request.requestedBy.isActive) throw conflict(`${request.requestedBy.name}'s account is deactivated — reject the request or give the lead to someone else.`);
-    return db.$transaction(async (tx) => {
-      const { leadId } = await giveInTx(tx, actor, request.poolLeadId, request.requestedById);
-      if (input.note) await tx.poolLeadRequest.update({ where: { id: request.id }, data: { decisionNote: input.note } });
-      return { status: "APPROVED" as const, leadId };
-    });
-  }
-  return db.$transaction(async (tx) => {
-    await tx.poolLeadRequest.update({ where: { id: request.id }, data: { status: "REJECTED", decidedById: actor.id, decidedAt: new Date(), decisionNote: input.note } });
-    await tx.task.updateMany({ where: { autoKey: `pool-request:${request.poolLeadId}:${request.id}`, status: { in: ["TODO", "IN_PROGRESS"] } }, data: { status: "COMPLETED", completedAt: new Date() } });
-    await logActivity(tx, {
-      action: "UPDATED", entityType: "POOL_LEAD", entityId: request.poolLeadId, entityLabel: label(request.poolLead), userId: actor.id,
-      description: `Declined ${request.requestedBy.name}'s request for ${label(request.poolLead)}${input.note ? ` — ${input.note}` : ""}`,
-    });
-    return { status: "REJECTED" as const, leadId: null };
-  });
-}
-
-/** A manager gives a pool lead straight to an agent (or to themselves), no request needed. */
-export async function assignPoolLead(actor: Actor, input: z.output<typeof poolAssignSchema>) {
+/** Managers give one or many entries (ticked in the table) to an agent. */
+export async function assignPoolLeads(actor: Actor, input: z.output<typeof poolAssignManySchema>) {
   assertManager(actor);
   await assertActiveUser(input.agentId);
-  return db.$transaction((tx) => giveInTx(tx, actor, input.id, input.agentId));
+  const agent = await db.user.findUniqueOrThrow({ where: { id: input.agentId }, select: { name: true } });
+  const ids = [...new Set(input.ids)];
+  const leadIds = await db.$transaction(
+    async (tx) => {
+      const out: string[] = [];
+      for (const id of ids) {
+        const leadId = await giveInTx(tx, actor, id, input.agentId, agent.name);
+        if (leadId) out.push(leadId);
+      }
+      return out;
+    },
+    { timeout: 120_000 },
+  );
+  return { given: leadIds.length, skipped: ids.length - leadIds.length, agent: agent.name, leadIds };
 }

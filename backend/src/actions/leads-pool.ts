@@ -2,10 +2,14 @@
 
 import { authedAction } from "@/lib/action";
 import { idOnly } from "@/schemas/common";
-import { poolAssignSchema, poolBulkSchema, poolDecisionSchema, poolLeadSchema, poolRequestIdSchema, updatePoolLeadSchema } from "@/schemas/leads-pool";
-import { addPoolLead, addPoolLeadsBulk, assignPoolLead, cancelPoolRequest, decidePoolRequest, deletePoolLead, requestPoolLead, updatePoolLead } from "@/services/leads-pool";
+import { poolAssignManySchema, poolBulkSchema, poolIdsSchema, poolImportSchema, poolLeadSchema, updatePoolLeadSchema } from "@/schemas/leads-pool";
+import { addPoolLead, addPoolLeadsBulk, assignPoolLeads, deletePoolLeads, importPoolFile, takePoolLead, updatePoolLead } from "@/services/leads-pool";
 
 const plural = (n: number, word: string) => `${n} ${word}${n === 1 ? "" : "s"}`;
+const addedMessage = (r: unknown) => {
+  const { added, skippedCount } = r as { added: number; skippedCount: number };
+  return `${plural(added, "number")} added to the pool${skippedCount ? ` · ${skippedCount} skipped` : ""}`;
+};
 
 export const addPoolLeadAction = authedAction(poolLeadSchema, (input, user) => addPoolLead(user, input), {
   message: (r) => {
@@ -13,20 +17,17 @@ export const addPoolLeadAction = authedAction(poolLeadSchema, (input, user) => a
     return known ? `Added to the pool — note: this number is already the lead ${known.fullName}${known.agent ? ` (${known.agent})` : ""}` : "Added to the leads pool";
   },
 });
-export const addPoolLeadsBulkAction = authedAction(poolBulkSchema, (input, user) => addPoolLeadsBulk(user, input), {
+export const addPoolLeadsBulkAction = authedAction(poolBulkSchema, (input, user) => addPoolLeadsBulk(user, input), { message: addedMessage });
+export const importPoolFileAction = authedAction(poolImportSchema, (input, user) => importPoolFile(user, input.file), { message: addedMessage });
+export const updatePoolLeadAction = authedAction(updatePoolLeadSchema, (input, user) => updatePoolLead(user, input), { message: "Pool lead updated" });
+export const deletePoolLeadsAction = authedAction(poolIdsSchema, (input, user) => deletePoolLeads(user, input.ids), {
+  message: (r) => `${plural((r as { removed: number }).removed, "number")} removed from the pool`,
+});
+
+export const takePoolLeadAction = authedAction(idOnly, (input, user) => takePoolLead(user, input.id), { message: "The lead is yours — it's on your Leads page" });
+export const assignPoolLeadsAction = authedAction(poolAssignManySchema, (input, user) => assignPoolLeads(user, input), {
   message: (r) => {
-    const { added, skipped } = r as { added: number; skipped: unknown[] };
-    return `${plural(added, "number")} added to the pool${skipped.length ? ` · ${skipped.length} skipped` : ""}`;
+    const { given, skipped, agent } = r as { given: number; skipped: number; agent: string };
+    return `${plural(given, "lead")} given to ${agent}${skipped ? ` · ${skipped} already taken` : ""}`;
   },
 });
-export const updatePoolLeadAction = authedAction(updatePoolLeadSchema, (input, user) => updatePoolLead(user, input), { message: "Pool lead updated" });
-export const deletePoolLeadAction = authedAction(idOnly, (input, user) => deletePoolLead(user, input.id), { message: "Removed from the pool" });
-
-export const requestPoolLeadAction = authedAction(idOnly, (input, user) => requestPoolLead(user, input.id), {
-  message: (r) => ((r as { status: string }).status === "APPROVED" ? "The lead is yours — it's on your Leads page" : "Request sent — the management will review it"),
-});
-export const cancelPoolRequestAction = authedAction(poolRequestIdSchema, (input, user) => cancelPoolRequest(user, input.requestId), { message: "Request cancelled" });
-export const decidePoolRequestAction = authedAction(poolDecisionSchema, (input, user) => decidePoolRequest(user, input), {
-  message: (r) => ((r as { status: string }).status === "APPROVED" ? "Approved — the lead is now on the agent's Leads page" : "Request declined"),
-});
-export const assignPoolLeadAction = authedAction(poolAssignSchema, (input, user) => assignPoolLead(user, input), { message: "Lead given — it's now on the agent's Leads page" });
