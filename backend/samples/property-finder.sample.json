@@ -1,0 +1,56 @@
+{
+  "listings": [
+    {
+      "reference_number": "PF-SAMPLE-1001",
+      "offering_type": "RR",
+      "property_type": "AP",
+      "price": { "yearly": 144000, "monthly": 12000 },
+      "city": "Doha",
+      "community": "The Pearl",
+      "sub_community": "Porto Arabia",
+      "property_name": "Tower 21",
+      "title_en": "Sea-view 2BR in Porto Arabia",
+      "description_en": "Bright two-bedroom apartment with marina and sea views.<br/>Chiller free.",
+      "size": "1,290",
+      "size_unit": "sqft",
+      "bedroom": "2",
+      "bathroom": "3",
+      "floor": "14",
+      "furnished": "Partly",
+      "private_amenities": "BA,PP,PG,SY,VW",
+      "agent": { "name": "Omar Haddad", "email": "omar@elite.qa", "phone": "+974 5500 3001" },
+      "photo": { "url": ["https://images.example.com/pf/1001-1.jpg", "https://images.example.com/pf/1001-2.jpg"] },
+      "geopoint": "51.5521,25.3712",
+      "url": "https://www.propertyfinder.qa/en/plp/rent/sample-1001.html",
+      "last_update": "2026-09-28 10:15:00"
+    },
+    {
+      "reference_number": "PF-SAMPLE-1002",
+      "offering_type": "CS",
+      "property_type": "OF",
+      "price": "4,250,000",
+      "city": "Doha",
+      "community": "West Bay",
+      "property_name": "Al Fardan Office Tower",
+      "title_en": "Fitted office floor in West Bay",
+      "description_en": "Full fitted office floor, 12 parking spaces.",
+      "size": "620",
+      "bedroom": "",
+      "bathroom": "4",
+      "furnished": "No",
+      "commercial_amenities": "Central A/C, Security",
+      "agent": { "name": "Unknown Broker", "email": "broker@example.com", "phone": "+974 5000 0000" },
+      "photo": { "url": "https://images.example.com/pf/1002-1.jpg" },
+      "url": "https://www.propertyfinder.qa/en/plp/buy/sample-1002.html",
+      "last_update": "2026-09-27T08:00:00Z"
+    },
+    {
+      "reference_number": "PF-SAMPLE-1003",
+      "offering_type": "RS",
+      "property_type": "Castle",
+      "price": "9000000",
+      "community": "Lusail",
+      "title_en": "Record with an unknown property type (fails validation on purpose)"
+    }
+  ]
+}

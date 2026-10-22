@@ -1,54 +1,38 @@
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import Image from 'next/image';
 import { useTranslations, useLocale } from 'next-intl';
-import { Phone, MessageSquare, Mail, Clock, BadgeCheck, Heart, Share2, Check } from 'lucide-react';
-import type { Agent } from '@/data/properties';
+import { Phone, MessageSquare, Mail, Clock, BadgeCheck, Share2, Check, UserRound } from 'lucide-react';
+import type { ListingAgent } from '@/lib/listing-types';
+import SaveButton from '@/components/listings/SaveButton';
+import BookViewing from '@/components/listings/BookViewing';
+import ReserveHome from '@/components/listings/ReserveHome';
 
 interface AgentPanelProps {
-  agent: Agent;
+  agent: ListingAgent;
+  /** Listing reference (ELT-…), used for saving and booking. */
   propertyId: string;
   /** Prefilled into the WhatsApp deep link. */
   shareTitle: string;
+  /** Agency phone when the listing has no assigned agent. */
+  fallbackPhone?: string;
+  /** Show "Reserve this home" (listing is available). */
+  reservable?: boolean;
 }
 
-const SAVED_KEY = 'elite:saved-properties';
-
-export default function AgentPanel({ agent, propertyId, shareTitle }: AgentPanelProps) {
+export default function AgentPanel({ agent, propertyId, shareTitle, fallbackPhone, reservable = false }: AgentPanelProps) {
   const t = useTranslations('property');
   const locale = useLocale();
   const isRtl = locale === 'ar';
 
-  const [saved, setSaved] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  const name = isRtl ? agent.full_name_ar : agent.full_name_en;
-  const title = isRtl ? agent.title_ar : agent.title_en;
+  const name = agent.name;
+  const title = agent.title;
   const agency = isRtl ? agent.agency_name_ar : agent.agency_name_en;
-
-  // Saved state lives client-side only; read it after mount to keep SSR output stable.
-  useEffect(() => {
-    try {
-      const list: string[] = JSON.parse(localStorage.getItem(SAVED_KEY) || '[]');
-      setSaved(list.includes(propertyId));
-    } catch {
-      // Corrupt or unavailable storage just means "not saved".
-    }
-  }, [propertyId]);
-
-  const toggleSaved = () => {
-    try {
-      const list: string[] = JSON.parse(localStorage.getItem(SAVED_KEY) || '[]');
-      const next = list.includes(propertyId)
-        ? list.filter((id) => id !== propertyId)
-        : [...list, propertyId];
-      localStorage.setItem(SAVED_KEY, JSON.stringify(next));
-      setSaved(next.includes(propertyId));
-    } catch {
-      setSaved((value) => !value);
-    }
-  };
+  const phone = agent.phone ?? fallbackPhone ?? null;
+  const whatsapp = agent.whatsapp ?? (phone ? phone.replace(/[^0-9]/g, '') : null);
 
   const share = async () => {
     const url = window.location.href;
@@ -69,7 +53,7 @@ export default function AgentPanel({ agent, propertyId, shareTitle }: AgentPanel
     }
   };
 
-  const whatsappHref = `https://wa.me/${agent.whatsapp}?text=${encodeURIComponent(shareTitle)}`;
+  const whatsappHref = whatsapp ? `https://wa.me/${whatsapp}?text=${encodeURIComponent(shareTitle)}` : null;
 
   return (
     <div className="rounded-2xl border border-gray-100 bg-white p-6 shadow-sm">
@@ -79,7 +63,13 @@ export default function AgentPanel({ agent, propertyId, shareTitle }: AgentPanel
 
       <div className="flex items-start gap-4">
         <div className="relative h-16 w-16 flex-none overflow-hidden rounded-full ring-2 ring-primary/30">
-          <Image src={agent.photo} alt={name} fill sizes="64px" className="object-cover" />
+          {agent.photo ? (
+            <Image src={agent.photo} alt={name} fill sizes="64px" className="object-cover" />
+          ) : (
+            <span className="flex h-full w-full items-center justify-center bg-gray-100 text-gray-400">
+              <UserRound className="h-7 w-7" aria-hidden="true" />
+            </span>
+          )}
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5">
@@ -96,22 +86,23 @@ export default function AgentPanel({ agent, propertyId, shareTitle }: AgentPanel
       <div className="mt-4 space-y-2 border-t border-gray-100 pt-4 text-sm">
         <p className="flex items-center gap-2 text-gray-600">
           <Clock className="h-4 w-4 flex-none text-primary" aria-hidden="true" />
-          {t('responds_in', { minutes: agent.response_minutes })}
-        </p>
-        <p className="text-gray-500">
-          <span className="text-gray-400">{t('speaks')}: </span>
-          {agent.languages.map((code) => t(`language_${code}`)).join(isRtl ? '، ' : ', ')}
+          {agent.response_minutes != null ? t('responds_in', { minutes: agent.response_minutes }) : t('response_unknown')}
         </p>
       </div>
 
       <div className="mt-5 grid gap-2.5">
+        <BookViewing reference={propertyId} agentName={name} />
+        {reservable && <ReserveHome reference={propertyId} />}
+        {phone && (
         <a
-          href={`tel:${agent.phone.replace(/\s+/g, '')}`}
+          href={`tel:${phone.replace(/\s+/g, '')}`}
           className="flex items-center justify-center gap-2 rounded-xl bg-secondary py-3.5 font-bold text-white transition hover:bg-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         >
           <Phone className="h-4 w-4" aria-hidden="true" />
           {t('call')}
         </a>
+        )}
+        {whatsappHref && (
         <a
           href={whatsappHref}
           target="_blank"
@@ -121,6 +112,8 @@ export default function AgentPanel({ agent, propertyId, shareTitle }: AgentPanel
           <MessageSquare className="h-4 w-4" aria-hidden="true" />
           {t('whatsapp')}
         </a>
+        )}
+        {agent.email && (
         <a
           href={`mailto:${agent.email}?subject=${encodeURIComponent(shareTitle)}`}
           className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 py-3.5 font-semibold text-gray-700 transition hover:border-gray-300 hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
@@ -128,21 +121,11 @@ export default function AgentPanel({ agent, propertyId, shareTitle }: AgentPanel
           <Mail className="h-4 w-4" aria-hidden="true" />
           {t('email_agent')}
         </a>
+        )}
       </div>
 
       <div className="mt-3 grid grid-cols-2 gap-2.5">
-        <button
-          type="button"
-          onClick={toggleSaved}
-          aria-pressed={saved}
-          className="flex items-center justify-center gap-2 rounded-xl border border-gray-200 py-2.5 text-sm font-medium text-gray-600 transition hover:bg-gray-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
-        >
-          <Heart
-            className={`h-4 w-4 transition ${saved ? 'fill-red-500 text-red-500' : ''}`}
-            aria-hidden="true"
-          />
-          {saved ? t('saved') : t('save')}
-        </button>
+        <SaveButton reference={propertyId} variant="button" />
         <button
           type="button"
           onClick={share}

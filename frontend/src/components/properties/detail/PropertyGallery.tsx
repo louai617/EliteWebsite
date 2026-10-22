@@ -2,12 +2,18 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import Image from 'next/image';
+import { protectPhoto } from '@/lib/protect-photo';
 import { useTranslations, useLocale } from 'next-intl';
-import { X, ChevronLeft, ChevronRight, Expand, Camera } from 'lucide-react';
+import { X, ChevronLeft, ChevronRight, Expand, Camera, Box, PlayCircle } from 'lucide-react';
 
 interface PropertyGalleryProps {
   images: string[];
+  /** Blurred previews for the first photos (from the agent app), shown while they load. */
+  blurs?: (string | null)[];
   title: string;
+  /** Show "Video" / "360° tour" shortcuts to the media section. */
+  hasVideo?: boolean;
+  hasTour?: boolean;
 }
 
 /**
@@ -17,8 +23,10 @@ interface PropertyGalleryProps {
  * is parked on the dialog so screen readers announce it. Arrow direction flips
  * under RTL so "next" always means "forward" visually.
  */
-export default function PropertyGallery({ images, title }: PropertyGalleryProps) {
+export default function PropertyGallery({ images, blurs = [], title, hasVideo = false, hasTour = false }: PropertyGalleryProps) {
+  const blur = (i: number) => (blurs[i] ? { placeholder: 'blur' as const, blurDataURL: blurs[i]! } : {});
   const t = useTranslations('property');
+  const tMedia = useTranslations('media');
   const locale = useLocale();
   const isRtl = locale === 'ar';
 
@@ -76,7 +84,7 @@ export default function PropertyGallery({ images, title }: PropertyGalleryProps)
   return (
     <>
       {/* Mosaic: one hero frame plus a 2x2 grid, collapsing to a single frame on mobile. */}
-      <div className="relative grid h-[300px] grid-cols-1 gap-2 overflow-hidden rounded-2xl sm:h-[420px] md:h-[540px] md:grid-cols-4 md:grid-rows-2">
+      <div className="protected-photo relative grid h-[300px] grid-cols-1 gap-2 overflow-hidden rounded-2xl sm:h-[420px] md:h-[540px] md:grid-cols-4 md:grid-rows-2" {...protectPhoto}>
         <button
           type="button"
           onClick={() => open(0)}
@@ -88,6 +96,7 @@ export default function PropertyGallery({ images, title }: PropertyGalleryProps)
             alt={title}
             fill
             priority
+            {...blur(0)}
             sizes="(max-width: 768px) 100vw, 50vw"
             className="object-cover transition-transform duration-700 group-hover:scale-[1.04]"
           />
@@ -107,10 +116,27 @@ export default function PropertyGallery({ images, title }: PropertyGalleryProps)
               alt={`${title} — ${index + 2}`}
               fill
               sizes="25vw"
+              {...blur(index + 1)}
               className="object-cover transition-transform duration-700 group-hover:scale-[1.06]"
             />
           </button>
         ))}
+
+        {/* Shortcuts to the video / 360° tour in the media section */}
+        {(hasVideo || hasTour) && (
+          <div className="absolute bottom-4 start-4 z-10 flex gap-2">
+            {hasVideo && (
+              <a href="#media-video" className="flex items-center gap-2 rounded-full bg-secondary/90 px-4 py-2.5 text-sm font-semibold text-white shadow-lg backdrop-blur transition hover:bg-primary">
+                <PlayCircle className="h-4 w-4" aria-hidden="true" /> {tMedia('watch_video')}
+              </a>
+            )}
+            {hasTour && (
+              <a href="#media-tour" className="flex items-center gap-2 rounded-full bg-secondary/90 px-4 py-2.5 text-sm font-semibold text-white shadow-lg backdrop-blur transition hover:bg-primary">
+                <Box className="h-4 w-4" aria-hidden="true" /> {tMedia('view_tour')}
+              </a>
+            )}
+          </div>
+        )}
 
         {/* Photo count / open-all affordance */}
         <button
@@ -132,7 +158,8 @@ export default function PropertyGallery({ images, title }: PropertyGalleryProps)
           aria-modal="true"
           aria-label={title}
           tabIndex={-1}
-          className="fixed inset-0 z-[100] flex flex-col bg-black/95 outline-none backdrop-blur-sm"
+          className="protected-photo fixed inset-0 z-[100] flex flex-col bg-black/95 outline-none backdrop-blur-sm"
+          {...protectPhoto}
         >
           <div className="flex items-center justify-between px-4 py-4 text-white sm:px-6">
             <span className="text-sm font-medium tabular-nums text-white/80">

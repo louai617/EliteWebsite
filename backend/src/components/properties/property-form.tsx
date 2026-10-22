@@ -1,0 +1,281 @@
+"use client";
+
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { toast } from "sonner";
+import { useForm, useWatch } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { createPropertyAction, updatePropertyAction } from "@/actions/properties";
+import { useFormAction } from "@/hooks/use-action";
+import {
+  AMENITIES,
+  FURNISHING_META,
+  PROPERTY_CATEGORY_META,
+  PROPERTY_STATUS_META,
+  PROPERTY_SUBCATEGORY_META,
+  PROPERTY_TYPE_META,
+  PROPERTY_TYPES_BY_CATEGORY,
+  PURPOSE_META,
+  QATAR_AREAS,
+  options,
+} from "@/lib/constants";
+import { propertySchema, type PropertyInput, type PropertyValues } from "@/schemas/property";
+import { toDateInput } from "@/lib/format";
+import { WebsiteSection } from "./website-fields";
+import { StagedPhotos, uploadStagedPhotos, type StagedPhoto } from "./photo-uploader";
+import type { AgentOption, Viewer } from "@/types/options";
+import type { LookupOption } from "@/types/search";
+import { Button } from "@/components/ui/button";
+import { Form } from "@/components/ui/form";
+import { AgentField } from "@/components/shared/form/agent-field";
+import { CheckboxField, EntityField, FormSection, SelectField, TextField, TextareaField } from "@/components/shared/form/fields";
+
+export type PropertyFormDefaults = Partial<Record<keyof PropertyInput, unknown>>;
+
+const EMPTY: PropertyInput = {
+  title: "",
+  category: "RESIDENTIAL",
+  subcategory: "PRIVATE",
+  type: "APARTMENT",
+  purpose: "RENT",
+  status: "AVAILABLE",
+  price: "",
+  currency: "QAR",
+  areaSqm: "",
+  bedrooms: "",
+  bathrooms: "",
+  floor: "",
+  buildingNumber: "",
+  tower: "",
+  yearBuilt: "",
+  country: "Qatar",
+  city: "Doha",
+  area: "",
+  street: "",
+  buildingName: "",
+  googleMapsUrl: "",
+  latitude: "",
+  longitude: "",
+  furnishing: null,
+  description: "",
+  parkingSpaces: 0,
+  hasBalcony: false,
+  hasMaidRoom: false,
+  hasPool: false,
+  hasGym: false,
+  hasSeaView: false,
+  hasMarinaView: false,
+  hasGarden: false,
+  hasBbq: false,
+  hasSecurity: false,
+  hasCentralAc: false,
+  hasInternet: false,
+  billsIncluded: false,
+  propertyFinderUrl: "",
+  externalUrl: "",
+  isFeatured: false,
+  seoTitle: "",
+  seoDescription: "",
+  ownerId: null,
+  agentId: null,
+  websitePublished: true,
+  isExclusive: false,
+  isVerified: false,
+  titleAr: "",
+  descriptionAr: "",
+  completionStatus: "READY",
+  ownershipType: null,
+  availableFrom: "",
+  handover: "",
+  developer: "",
+  serviceChargeSqm: "",
+  plotSqm: "",
+  totalFloors: "",
+  amenities: [],
+  highlights: [],
+  nearby: [],
+  paymentPlan: [],
+};
+
+const SELECT_KEYS = new Set(["furnishing", "ownerId", "agentId", "ownershipType"]);
+const LIST_KEYS = new Set(["amenities", "highlights", "nearby", "paymentPlan"]);
+
+/** Replaces nulls with "" so inputs stay controlled. */
+function toFormValues(values: PropertyFormDefaults): PropertyInput {
+  const merged = { ...EMPTY } as Record<string, unknown>;
+  for (const [key, value] of Object.entries(values)) {
+    if (!(key in EMPTY)) continue;
+    if (LIST_KEYS.has(key)) {
+      // Stored as JSON text in the database.
+      let list: unknown = value;
+      if (typeof value === "string") {
+        try {
+          list = JSON.parse(value);
+        } catch {
+          list = [];
+        }
+      }
+      merged[key] = Array.isArray(list) ? list : [];
+      continue;
+    }
+    if (key === "availableFrom") {
+      merged[key] = value ? toDateInput(value as Date | string) : "";
+      continue;
+    }
+    merged[key] = value === null || value === undefined ? (SELECT_KEYS.has(key) ? null : (EMPTY as Record<string, unknown>)[key]) : value;
+  }
+  return merged as PropertyInput;
+}
+
+export function PropertyForm({
+  propertyId,
+  defaults,
+  ownerOption,
+  agents,
+  viewer,
+  areas,
+}: {
+  propertyId?: string;
+  defaults?: PropertyFormDefaults;
+  ownerOption?: LookupOption | null;
+  agents: AgentOption[];
+  viewer: Viewer;
+  areas: string[];
+}) {
+  const router = useRouter();
+  const form = useForm<PropertyInput, unknown, PropertyValues>({
+    resolver: zodResolver(propertySchema),
+    defaultValues: toFormValues({ ...(viewer.isManager ? {} : { agentId: viewer.id }), ...defaults }),
+    mode: "onTouched",
+  });
+  const purpose = useWatch({ control: form.control, name: "purpose" });
+  const category = (useWatch({ control: form.control, name: "category" }) as keyof typeof PROPERTY_TYPES_BY_CATEGORY | undefined) ?? "RESIDENTIAL";
+  const allowedTypes = PROPERTY_TYPES_BY_CATEGORY[category];
+  const typeOptions = options(PROPERTY_TYPE_META).filter((o) => allowedTypes.includes(o.value));
+
+  // Keep the type consistent with the category (e.g. switching to Commercial drops "Villa").
+  useEffect(() => {
+    const current = form.getValues("type");
+    if (!allowedTypes.includes(current)) form.setValue("type", allowedTypes[0], { shouldDirty: true });
+  }, [allowedTypes, form]);
+  const areaOptions = Array.from(new Set([...QATAR_AREAS, ...areas])).sort();
+
+  // New listings: photos are picked in the form and uploaded right after the listing is created.
+  const [photos, setPhotos] = useState<StagedPhoto[]>([]);
+  const [photoProgress, setPhotoProgress] = useState<{ done: number; total: number } | null>(null);
+
+  const onSubmit = useFormAction(
+    form,
+    (values: PropertyValues) => (propertyId ? updatePropertyAction({ ...values, id: propertyId }) : createPropertyAction(values)),
+    {
+      onSuccess: async (data) => {
+        const id = (data as { id: string }).id;
+        if (!propertyId && photos.length) {
+          const failed = await uploadStagedPhotos(id, photos, (done, total) => setPhotoProgress({ done, total }));
+          if (failed.length) toast.error(`${failed.length} photo${failed.length === 1 ? "" : "s"} couldn't be uploaded — add ${failed.length === 1 ? "it" : "them"} again from the listing.`, { description: failed.slice(0, 3).join("\n") });
+          else toast.success(`${photos.length} photo${photos.length === 1 ? "" : "s"} uploaded`);
+        }
+        router.push(`/properties/${id}`);
+      },
+    },
+  );
+  const saving = form.formState.isSubmitting || photoProgress !== null;
+
+  return (
+    <Form {...form}>
+      <form onSubmit={onSubmit} noValidate className="space-y-6">
+        <div className="space-y-6 rounded-lg border bg-card p-5 sm:p-6">
+          <FormSection title="Listing" description="What it is and how it is offered.">
+            <TextField control={form.control} name="title" label="Title" required placeholder="Sea-view 2BR apartment in Porto Arabia" className="sm:col-span-2" />
+            <SelectField control={form.control} name="category" label="Category" required options={options(PROPERTY_CATEGORY_META)} />
+            <SelectField control={form.control} name="subcategory" label="Listed by" required options={options(PROPERTY_SUBCATEGORY_META)} description="Company-owned or a private owner" />
+            <SelectField control={form.control} name="type" label="Property type" required options={typeOptions} />
+            <SelectField control={form.control} name="purpose" label="Purpose" required options={options(PURPOSE_META)} />
+            <SelectField control={form.control} name="status" label="Status" required options={options(PROPERTY_STATUS_META)} />
+            <div className="grid grid-cols-[1fr_88px] gap-2">
+              <TextField
+                control={form.control}
+                name="price"
+                label={purpose === "RENT" ? "Monthly rent" : "Sale price"}
+                required
+                inputMode="numeric"
+                placeholder={purpose === "RENT" ? "12000" : "1850000"}
+              />
+              <TextField control={form.control} name="currency" label="Currency" maxLength={3} />
+            </div>
+          </FormSection>
+
+          {!propertyId && (
+            <FormSection title="Photos" description="Add them now or later. They're optimized automatically: straightened, location data removed, resized and compressed.">
+              <StagedPhotos value={photos} onChange={setPhotos} disabled={saving} />
+            </FormSection>
+          )}
+
+          <FormSection title="Specifications">
+            <TextField control={form.control} name="areaSqm" label="Size (sqm)" inputMode="decimal" />
+            <TextField control={form.control} name="bedrooms" label="Bedrooms" inputMode="numeric" description="0 for studio" />
+            <TextField control={form.control} name="bathrooms" label="Bathrooms" inputMode="numeric" />
+            <TextField control={form.control} name="parkingSpaces" label="Parking spaces" inputMode="numeric" />
+            <TextField control={form.control} name="floor" label="Floor" inputMode="numeric" />
+            <TextField control={form.control} name="yearBuilt" label="Year built" inputMode="numeric" />
+            <TextField control={form.control} name="tower" label="Tower" />
+            <TextField control={form.control} name="buildingNumber" label="Building no." />
+            <SelectField control={form.control} name="furnishing" label="Furnishing" options={options(FURNISHING_META)} allowEmpty emptyLabel="Not specified" />
+          </FormSection>
+
+          <FormSection title="Location" description="Area is used for filtering and matching leads.">
+            <SelectField control={form.control} name="area" label="Area" required options={areaOptions.map((a) => ({ value: a, label: a }))} placeholder="Choose an area" />
+            <TextField control={form.control} name="buildingName" label="Building / project" placeholder="Porto Arabia Tower 12" />
+            <TextField control={form.control} name="street" label="Street" />
+            <TextField control={form.control} name="city" label="City" required />
+            <TextField control={form.control} name="country" label="Country" required />
+            <TextField control={form.control} name="googleMapsUrl" label="Google Maps URL" type="url" placeholder="https://maps.google.com/…" />
+            <TextField control={form.control} name="latitude" label="Latitude" inputMode="decimal" />
+            <TextField control={form.control} name="longitude" label="Longitude" inputMode="decimal" />
+          </FormSection>
+
+          <FormSection title="Amenities">
+            <div className="grid grid-cols-2 gap-3 sm:col-span-2 md:grid-cols-3">
+              {AMENITIES.map((a) => (
+                <CheckboxField key={a.key} control={form.control} name={a.key} label={a.label} />
+              ))}
+            </div>
+          </FormSection>
+
+          <FormSection title="Description">
+            <TextareaField control={form.control} name="description" label="Description" className="sm:col-span-2" rows={6} placeholder="Highlights, views, community facilities, availability…" />
+          </FormSection>
+
+          <FormSection title="Ownership & team">
+            <EntityField control={form.control} name="ownerId" label="Owner" kind="owner" placeholder="Search owners…" initialOption={ownerOption} description="Add new owners from the Owners page." />
+            <AgentField control={form.control} name="agentId" agents={agents} viewer={viewer} />
+          </FormSection>
+
+          <WebsiteSection control={form.control} />
+
+          <FormSection title="Marketing" description="Portal links and SEO for the public website.">
+            <TextField control={form.control} name="propertyFinderUrl" label="Property Finder URL" type="url" className="sm:col-span-2" />
+            <TextField control={form.control} name="externalUrl" label="Other listing URL" type="url" className="sm:col-span-2" />
+            <TextField control={form.control} name="seoTitle" label="SEO title" className="sm:col-span-2" />
+            <TextareaField control={form.control} name="seoDescription" label="SEO description" className="sm:col-span-2" rows={2} />
+            <CheckboxField control={form.control} name="isFeatured" label="Featured listing" />
+          </FormSection>
+        </div>
+
+        <div className="sticky bottom-0 -mx-3 flex justify-end gap-2 border-t bg-background/95 px-3 py-3 backdrop-blur sm:-mx-5 sm:px-5 lg:-mx-7 lg:px-7">
+          {photoProgress && (
+            <p className="mr-auto flex items-center text-sm text-muted-foreground" role="status">
+              Uploading photos {photoProgress.done} of {photoProgress.total}…
+            </p>
+          )}
+          <Button type="button" variant="outline" onClick={() => router.back()} disabled={saving}>
+            Cancel
+          </Button>
+          <Button type="submit" loading={saving}>
+            {propertyId ? "Save changes" : photos.length ? `Create property with ${photos.length} photo${photos.length === 1 ? "" : "s"}` : "Create property"}
+          </Button>
+        </div>
+      </form>
+    </Form>
+  );
+}
