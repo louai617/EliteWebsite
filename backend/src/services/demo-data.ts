@@ -6,7 +6,7 @@ import { PUBLIC_PREFIX } from "./storage";
 
 /**
  * Empties the CRM for a fresh start (`npm run db:clear-demo`): every listing, owner, lead,
- * client, viewing, deal, task, report, document, reservation, import and log entry, and every
+ * leads-pool entry, client, viewing, deal, task, report, document, reservation, import and log entry, and every
  * account except the admins. Company settings, scoring weights, contract templates and the
  * company-wide daily tasks stay; reference numbers start again (first listing ELT-1001).
  *
@@ -26,11 +26,12 @@ const DEMO_PAYMENT = {
 
 /** How many records a clear would remove. */
 export async function demoDataCounts() {
-  const [properties, photos, owners, leads, clients, viewings, deals, tasks, documents, reservations, activityLog, accounts] = await Promise.all([
+  const [properties, photos, owners, leads, poolLeads, clients, viewings, deals, tasks, documents, reservations, activityLog, accounts] = await Promise.all([
     db.property.count(),
     db.propertyImage.count(),
     db.owner.count(),
     db.lead.count(),
+    db.poolLead.count(),
     db.client.count(),
     db.viewing.count(),
     db.deal.count(),
@@ -46,6 +47,7 @@ export async function demoDataCounts() {
     photos,
     owners,
     leads,
+    poolLeads,
     clients,
     viewings,
     deals,
@@ -104,6 +106,8 @@ export async function clearDemoData({ moveFilesTo }: { moveFilesTo?: string } = 
     await tx.document.deleteMany();
     await tx.reservation.deleteMany();
     await tx.leadPassRequest.deleteMany();
+    await tx.poolLeadRequest.deleteMany();
+    await tx.poolLead.deleteMany();
     await tx.otpCode.deleteMany();
     await tx.emailLog.deleteMany();
     await tx.importRecord.deleteMany();

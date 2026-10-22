@@ -97,6 +97,8 @@ enum LeadSource {
   REFERRAL
   WALK_IN
   PHONE
+  /// Taken from the leads pool (approved by a manager).
+  LEADS_POOL
   OTHER
 }
 
@@ -290,6 +292,7 @@ enum EntityType {
   DOCUMENT
   CONTRACT
   RESERVATION
+  POOL_LEAD
 }
 
 enum ActivityAction {
@@ -348,6 +351,10 @@ model User {
   uploadedDocuments    Document[]          @relation("DocumentUploader")
   passRequests         LeadPassRequest[]   @relation("PassRequester")
   passDecisions        LeadPassRequest[]   @relation("PassDecider")
+  poolLeadsAdded       PoolLead[]          @relation("PoolLeadCreator")
+  poolLeadsTaken       PoolLead[]          @relation("PoolLeadTaker")
+  poolRequests         PoolLeadRequest[]   @relation("PoolRequester")
+  poolDecisions        PoolLeadRequest[]   @relation("PoolDecider")
   editedTemplates      ContractTemplate[]
   propertyMedia        PropertyMedia[]
   contracts            Contract[]
@@ -639,6 +646,8 @@ model Lead {
   documents      Document[]
   passRequests   LeadPassRequest[]
   reservations   Reservation[]
+  /// The pool entry this lead was taken from.
+  poolLead       PoolLead?
 
   @@index([status])
   @@index([source])
@@ -1256,6 +1265,73 @@ model LeadPassRequest {
   createdAt     DateTime          @default(now())
 
   @@index([leadId, status])
+  @@index([status, createdAt])
+}
+
+// ───────────────────────────── Leads pool ─────────────────────────────
+
+enum PoolLeadStatus {
+  /// In the pool: agents see a masked number and can ask for it.
+  AVAILABLE
+  /// Given to an agent — it is now a lead on the Leads page.
+  TAKEN
+}
+
+/**
+ * A contact waiting in the leads pool (added by managers/admins): a buyer or tenant with their
+ * needs, or just a private owner's number. Only the phone is required. Agents see the number
+ * masked (+9745********7) until a manager approves their request; it then becomes a Lead.
+ */
+model PoolLead {
+  id             String          @id @default(cuid())
+  phone          String
+  /// Digits only (for duplicate checks and manager search).
+  phoneDigits    String
+  fullName       String?
+  email          String?
+  leadType       CustomerType?
+  purpose        ListingPurpose?
+  interestedArea String?
+  budgetMin      Int?
+  budgetMax      Int?
+  bedrooms       Int?
+  notes          String?
+  status         PoolLeadStatus  @default(AVAILABLE)
+
+  createdById String?
+  createdBy   User?   @relation("PoolLeadCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  /// Set when taken: the agent who got it and the lead it became.
+  takenById   String?
+  takenBy     User?   @relation("PoolLeadTaker", fields: [takenById], references: [id], onDelete: SetNull)
+  takenAt     DateTime?
+  leadId      String? @unique
+  lead        Lead?   @relation(fields: [leadId], references: [id], onDelete: SetNull)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  requests PoolLeadRequest[]
+
+  @@index([status, createdAt])
+  @@index([phoneDigits])
+}
+
+/** An agent asking for a pool lead ("Get this lead"); a manager approves or rejects it. */
+model PoolLeadRequest {
+  id            String            @id @default(cuid())
+  poolLeadId    String
+  poolLead      PoolLead          @relation(fields: [poolLeadId], references: [id], onDelete: Cascade)
+  status        PassRequestStatus @default(PENDING)
+  requestedById String
+  requestedBy   User              @relation("PoolRequester", fields: [requestedById], references: [id], onDelete: Cascade)
+  decidedById   String?
+  decidedBy     User?             @relation("PoolDecider", fields: [decidedById], references: [id], onDelete: SetNull)
+  decidedAt     DateTime?
+  decisionNote  String?
+  createdAt     DateTime          @default(now())
+
+  @@index([poolLeadId, status])
+  @@index([requestedById, status])
   @@index([status, createdAt])
 }
 

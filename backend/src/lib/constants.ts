@@ -17,6 +17,7 @@ import {
   ImportRunStatus,
   ListingPurpose,
   PassRequestStatus,
+  PoolLeadStatus,
   PaymentMethod,
   Priority,
   PropertyCategory,
@@ -160,6 +161,7 @@ export const LEAD_SOURCE_META = labelsOnly<LeadSource>({
   REFERRAL: "Referral",
   WALK_IN: "Walk-in",
   PHONE: "Phone",
+  LEADS_POOL: "Leads pool",
   OTHER: "Other",
 });
 
@@ -240,6 +242,17 @@ export const PASS_STATUS_META: MetaMap<PassRequestStatus> = {
   PENDING: { label: "Waiting for approval", tone: "amber" },
   APPROVED: { label: "Approved", tone: "green" },
   REJECTED: { label: "Rejected", tone: "red" },
+};
+
+export const POOL_LEAD_STATUS_META: MetaMap<PoolLeadStatus> = {
+  AVAILABLE: { label: "In the pool", tone: "blue" },
+  TAKEN: { label: "Taken", tone: "green" },
+};
+
+export const POOL_REQUEST_STATUS_META: MetaMap<PassRequestStatus> = {
+  PENDING: { label: "Waiting for approval", tone: "amber" },
+  APPROVED: { label: "Approved", tone: "green" },
+  REJECTED: { label: "Not approved", tone: "red" },
 };
 
 export const RESERVATION_STATUS_META: MetaMap<ReservationStatus> = {

@@ -18,4 +18,5 @@ run("node --conditions=react-server --import tsx tests/workflow.test.ts");
 run("node --conditions=react-server --import tsx tests/media.test.ts");
 run("node --conditions=react-server --import tsx tests/photos.test.ts");
 run("node --conditions=react-server --import tsx tests/watermark.test.ts");
+run("node --conditions=react-server --import tsx tests/leads-pool.test.ts");
 run("node --conditions=react-server --import tsx tests/clear-demo.test.ts");
