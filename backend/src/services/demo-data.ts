@@ -106,6 +106,7 @@ export async function clearDemoData({ moveFilesTo }: { moveFilesTo?: string } = 
     await tx.document.deleteMany();
     await tx.reservation.deleteMany();
     await tx.leadPassRequest.deleteMany();
+    await tx.poolLeadRequest.deleteMany();
     await tx.poolLead.deleteMany();
     await tx.otpCode.deleteMany();
     await tx.emailLog.deleteMany();

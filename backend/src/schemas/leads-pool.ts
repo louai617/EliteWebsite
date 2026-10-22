@@ -31,14 +31,7 @@ export const poolBulkSchema = z.object({
   notes: optionalText(2000),
 });
 
-const ids = z.array(id).min(1, "Select at least one").max(100, "Select up to 100 at a time");
-
-/** Managers give the ticked entries (or a single one) to an agent. */
-export const poolAssignManySchema = z.object({ ids, agentId: z.cuid("Choose who gets the leads") });
-export const poolIdsSchema = z.object({ ids });
-
-/** An Excel (.xlsx) or CSV file of numbers. */
-export const poolImportSchema = z
-  .instanceof(FormData)
-  .transform((fd) => ({ file: fd.get("file") }))
-  .pipe(z.object({ file: z.instanceof(File, { error: "Choose a file" }).refine((f) => f.size > 0, "The file is empty").refine((f) => f.size <= 10 * 1024 * 1024, "The file is too large (10 MB max)") }));
+export const poolDecisionSchema = z.object({ requestId: id, approve: z.boolean(), note: optionalText(500) });
+export const poolRequestIdSchema = z.object({ requestId: id });
+/** A manager hands a pool lead straight to an agent (or to themselves). */
+export const poolAssignSchema = z.object({ id, agentId: z.cuid("Choose who gets the lead") });

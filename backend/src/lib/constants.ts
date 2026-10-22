@@ -459,7 +459,7 @@ export function options<T extends string>(meta: MetaMap<T>) {
   return (Object.keys(meta) as T[]).map((value) => ({ value, label: meta[value].label }));
 }
 
-export const PAGE_SIZES = [10, 20, 50, 100] as const;
+export const PAGE_SIZES = [10, 20, 50] as const;
 export const DEFAULT_PAGE_SIZE = 20;
 
 /** Arabic names for areas/cities shown on the bilingual website (falls back to English). */

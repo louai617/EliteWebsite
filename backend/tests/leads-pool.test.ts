@@ -1,18 +1,29 @@
 /**
- * Tests for the leads pool: managers add numbers (one by one, pasted, or from an Excel / CSV
- * file), agents see them masked and take them straight away, managers give ticked numbers to
- * an agent — each becomes a lead on that agent's Leads page.
+ * Tests for the leads pool: managers add numbers (one by one or pasted), agents see them
+ * masked and ask for them, a manager approves and the lead lands on the agent's Leads page.
  *   npm test   (uses a throwaway ./test.db, never the dev database)
  */
 import "dotenv/config";
-import ExcelJS from "exceljs";
 import { db } from "@/lib/db";
 import { toPublicError } from "@/lib/errors";
 import { maskPhone, maskPhonesIn } from "@/lib/search";
 import { poolBulkSchema, poolLeadSchema } from "@/schemas/leads-pool";
 import { listLeads } from "@/services/leads";
-import { addPoolLead, addPoolLeadsBulk, assignPoolLeads, deletePoolLeads, importPoolFile, listPool, parsePoolLines, poolBatches, takePoolLead, updatePoolLead } from "@/services/leads-pool";
-import { readPoolSheet } from "@/services/pool-import";
+import {
+  addPoolLead,
+  addPoolLeadsBulk,
+  assignPoolLead,
+  cancelPoolRequest,
+  decidePoolRequest,
+  deletePoolLead,
+  listMyPoolRequests,
+  listPendingPoolRequests,
+  listPool,
+  MAX_PENDING_REQUESTS,
+  parsePoolLines,
+  requestPoolLead,
+  updatePoolLead,
+} from "@/services/leads-pool";
 import type { Role } from "@/generated/prisma/enums";
 
 let pass = 0;
@@ -82,85 +93,78 @@ async function main() {
   check("managers see the full number", managerView.items.find((r) => r.id === owner.id)?.phone === "+974 3311 2200");
   check("managers can search by number", (await listPool(manager, params("33112200"), {})).items.some((r) => r.id === owner.id));
 
-  // ── Get this lead: straight away ──
+  // ── Get this lead → approval ──
+  const asked = await requestPoolLead(omar, buyer.id);
+  check("an agent's request waits for the management", asked.status === "PENDING" && asked.leadId === null);
+  await rejects("asking twice is refused", () => requestPoolLead(omar, buyer.id), /already asked/i);
+  const aishaAsked = await requestPoolLead(aisha, buyer.id);
+  check("several agents can ask for the same lead", aishaAsked.status === "PENDING");
+  const approvalTask = await db.task.findFirst({ where: { autoKey: { startsWith: `pool-request:${buyer.id}:` }, assigneeId: admin.id } });
+  check("the admin gets an approval task", Boolean(approvalTask));
+  check("the task doesn't show the full number", approvalTask && !approvalTask.description?.includes("6600 1122") && !approvalTask.title.includes("6600"));
+  check("the request is listed for managers with the full number", (await listPendingPoolRequests(manager)).some((r) => r.poolLead.id === buyer.id && r.poolLead.phone === "+974 6600 1122"));
+  check("agents get no pending list", (await listPendingPoolRequests(omar)).length === 0);
+  check("the agent sees their request as requested", (await listPool(omar, params(), {})).items.find((r) => r.id === buyer.id)?.myRequest?.status === "PENDING");
   check("the leads page doesn't have it yet", (await listLeads(omar, params("Khalid"), {})).total === 0);
-  const got = await takePoolLead(omar, buyer.id);
-  const lead = await db.lead.findUniqueOrThrow({ where: { id: got.leadId } });
-  check("the lead is the agent's at once, with the full details", lead.agentId === omar.id && lead.phone === "+974 6600 1122" && lead.fullName === "Khalid Buyer" && lead.source === "LEADS_POOL" && lead.status === "NEW");
+
+  const omarRequest = await db.poolLeadRequest.findFirstOrThrow({ where: { poolLeadId: buyer.id, requestedById: omar.id } });
+  await rejects("agents can't approve", () => decidePoolRequest(omar, { requestId: omarRequest.id, approve: true, note: null }), /managers/i);
+  const approved = await decidePoolRequest(manager, { requestId: omarRequest.id, approve: true, note: "Call him today" });
+  check("approval creates the lead", approved.status === "APPROVED" && Boolean(approved.leadId));
+  const lead = await db.lead.findUniqueOrThrow({ where: { id: approved.leadId! } });
+  check("the lead is the agent's, with the full details", lead.agentId === omar.id && lead.phone === "+974 6600 1122" && lead.fullName === "Khalid Buyer" && lead.source === "LEADS_POOL" && lead.status === "NEW");
   check("needs are carried over", lead.leadType === "BUYER" && lead.purpose === "SALE" && lead.interestedArea === "Lusail" && lead.budgetMin === 2000000 && lead.bedrooms === 3 && lead.email === "khalid.buyer@example.com");
   check("it shows on the agent's Leads page", (await listLeads(omar, params("Khalid"), {})).total === 1);
   check("the usual response task is created", Boolean(await db.task.findFirst({ where: { leadId: lead.id, type: "LEAD_RESPONSE", assigneeId: omar.id } })));
   const pool = await db.poolLead.findUniqueOrThrow({ where: { id: buyer.id } });
   check("the pool entry is marked taken", pool.status === "TAKEN" && pool.takenById === omar.id && pool.leadId === lead.id);
+  check("the other agent's request is declined", (await db.poolLeadRequest.findFirstOrThrow({ where: { poolLeadId: buyer.id, requestedById: aisha.id } })).status === "REJECTED");
+  check("approval tasks are closed", (await db.task.count({ where: { autoKey: { startsWith: `pool-request:${buyer.id}:` }, status: { in: ["TODO", "IN_PROGRESS"] } } })) === 0);
   check("taken leads leave the agents' pool", !(await listPool(aisha, params(), {})).items.some((r) => r.id === buyer.id));
-  await rejects("nobody else can take it", () => takePoolLead(aisha, buyer.id), /no longer in the pool/i);
-  check("other agents can't open the lead", (await listLeads(aisha, params("Khalid"), {})).total === 0);
-  const [a1, a2] = await Promise.allSettled([takePoolLead(omar, owner.id), takePoolLead(aisha, owner.id)]);
-  check("two agents pressing at once: only one gets it", [a1, a2].filter((r) => r.status === "fulfilled").length === 1 && (await db.lead.count({ where: { phone: "+974 3311 2200" } })) === 1);
+  const omarRequests = await listMyPoolRequests(omar);
+  check("the approved agent sees the number and the lead", omarRequests.some((r) => r.status === "APPROVED" && r.leadId === lead.id && r.phone === "+974 6600 1122"));
+  const aishaRequests = await listMyPoolRequests(aisha);
+  check("the declined agent still sees it masked", aishaRequests.some((r) => r.status === "REJECTED" && r.leadId === null && r.phone === maskPhone("+974 6600 1122")));
+  await rejects("a taken lead can't be requested again", () => requestPoolLead(aisha, buyer.id), /not found/i);
+  await rejects("a decided request can't be decided again", () => decidePoolRequest(manager, { requestId: omarRequest.id, approve: true, note: null }), /already decided/i);
 
-  // ── Excel / CSV import ──
-  const wb = new ExcelJS.Workbook();
-  const ws = wb.addWorksheet("Owners");
-  ws.addRow(["Owners list — October"]);
-  ws.addRow(["Mobile", "Client name", "Type", "Rent/Sale", "Location", "Beds", "Budget", "Nationality", "Comments"]);
-  ws.addRow([97455001001, "Hamad", "Landlord", "Rent", "Al Waab", "4", "15,000 - 18,000", "Qatari", "2 villas"]);
-  ws.addRow(["+974 5500 1002 / 6600 9999", "Mona", "buyer", "for sale", "Lusail", "Studio", "1.2M", "", ""]);
-  ws.addRow(["", "No number here", "", "", "", "", "", "", ""]);
-  ws.addRow(["12", "Bad number", "", "", "", "", "", "", ""]);
-  ws.addRow(["+974 5500 1001", "Duplicate of row 3", "", "", "", "", "", "", ""]);
-  ws.addRow(["+974 6600 1122", "Already a lead, but not in the pool any more", "", "", "", "", "", "", ""]);
-  const xlsx = new File([Buffer.from(await wb.xlsx.writeBuffer())], "owners october.xlsx", { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-  const sheet = await readPoolSheet(xlsx);
-  check("the heading row is found below a title row", sheet.columns.some((c) => c.heading === "Mobile" && c.field === "phone"));
-  const hamad = sheet.rows.find((r) => r.fullName === "Hamad");
-  check("columns are recognised by their headings", hamad?.phone === "97455001001" && hamad.leadType === "LANDLORD" && hamad.purpose === "RENT" && hamad.interestedArea === "Al Waab" && hamad.bedrooms === 4, hamad);
-  check("a budget range is split into min and max", hamad?.budgetMin === 15000 && hamad.budgetMax === 18000);
-  check("other columns are kept in the notes", hamad?.notes === "2 villas · Nationality: Qatari", hamad?.notes);
-  const mona = sheet.rows.find((r) => r.fullName === "Mona");
-  check("a second number in the cell goes to the notes", mona?.phone === "+974 5500 1002" && mona.notes?.includes("Other number: 6600 9999"), mona);
-  check("words are understood (buyer, for sale, studio, 1.2M)", mona?.leadType === "BUYER" && mona.purpose === "SALE" && mona.bedrooms === 0 && mona.budgetMax === 1200000);
-  check("rows without a valid number are listed", sheet.skipped.length === 2 && sheet.skipped.every((s) => s.line === 5 || s.line === 6), sheet.skipped);
+  // Decline + ask again, cancel
+  await requestPoolLead(aisha, owner.id);
+  const aishaOwner = await db.poolLeadRequest.findFirstOrThrow({ where: { poolLeadId: owner.id, requestedById: aisha.id, status: "PENDING" } });
+  await decidePoolRequest(admin, { requestId: aishaOwner.id, approve: false, note: "Already handled by the office" });
+  check("a declined lead stays in the pool", (await db.poolLead.findUniqueOrThrow({ where: { id: owner.id } })).status === "AVAILABLE");
+  check("the agent sees the reason", (await listMyPoolRequests(aisha)).some((r) => r.id === aishaOwner.id && r.decisionNote === "Already handled by the office"));
+  const again = await requestPoolLead(aisha, owner.id);
+  check("after a decline the agent may ask again", again.status === "PENDING");
+  const againRow = await db.poolLeadRequest.findFirstOrThrow({ where: { poolLeadId: owner.id, requestedById: aisha.id, status: "PENDING" } });
+  await rejects("agents can't cancel others' requests", () => cancelPoolRequest(omar, againRow.id), /not found/i);
+  await cancelPoolRequest(aisha, againRow.id);
+  check("cancelling removes the request and its task", (await db.poolLeadRequest.count({ where: { id: againRow.id } })) === 0 && (await db.task.count({ where: { autoKey: `pool-request:${owner.id}:${againRow.id}`, status: "TODO" } })) === 0);
 
-  const imported = await importPoolFile(manager, xlsx);
-  check("import adds the new numbers", imported.added === 3, imported);
-  check("import skips the repeated number", imported.skippedCount === 3 && imported.skipped.some((s) => s.reason === "Already in the pool"));
-  check("the batch is named after the file", imported.batch.startsWith("owners october.xlsx · "));
-  check("managers can filter by import", (await listPool(manager, params(), { batch: imported.batch })).total === 3);
-  check("imports are listed for the filter", (await poolBatches(manager)).some((b) => b.batch === imported.batch && b.available === 3));
-  check("agents don't see where numbers came from", (await listPool(omar, params(), {})).items.every((r) => r.batch === null) && (await poolBatches(omar)).length === 0);
-  await rejects("agents can't import", () => importPoolFile(omar, xlsx), /managers/i);
+  // Limit on waiting requests
+  const many = await addPoolLeadsBulk(manager, poolBulkSchema.parse({ lines: Array.from({ length: MAX_PENDING_REQUESTS + 1 }, (_, i) => `+974 7700 ${String(1000 + i)}`).join("\n") }));
+  const ids = (await db.poolLead.findMany({ where: { phone: { startsWith: "+974 7700" } }, select: { id: true }, orderBy: { phone: "asc" } })).map((r) => r.id);
+  check("bulk added the batch", many.added === MAX_PENDING_REQUESTS + 1);
+  for (const id of ids.slice(0, MAX_PENDING_REQUESTS)) await requestPoolLead(aisha, id);
+  await rejects(`at most ${MAX_PENDING_REQUESTS} requests waiting at once`, () => requestPoolLead(aisha, ids[MAX_PENDING_REQUESTS]), /requests waiting/i);
 
-  const csv = new File(["\uFEFFphone;name;area\r\n\"+974 5500 2001\";\"Salem; the owner\";The Pearl\r\n55002002;Noor;West Bay\r\n"], "list.csv", { type: "text/csv" });
-  const csvRows = (await readPoolSheet(csv)).rows;
-  check("CSV with semicolons and quotes", csvRows.length === 2 && csvRows[0].fullName === "Salem; the owner" && csvRows[1].interestedArea === "West Bay", csvRows);
-  const noHeadings = (await readPoolSheet(new File(["Khalifa,+974 5500 3001\nJassim,+974 5500 3002\n"], "x.csv"))).rows;
-  check("without headings the phone column is found", noHeadings.length === 2 && noHeadings[0].phone === "+974 5500 3001" && noHeadings[0].fullName === "Khalifa", noHeadings);
-  await rejects("old .xls files get a clear message", () => importPoolFile(manager, new File(["x"], "old.xls")), /Save As/);
-  await rejects("other files are refused", () => importPoolFile(manager, new File(["%PDF-1.4"], "doc.pdf")), /Excel|CSV/);
-  await rejects("a fake .xlsx is refused", () => importPoolFile(manager, new File(["not a zip"], "fake.xlsx")), /Excel|CSV/);
-
-  // ── Managers tick numbers and give them to an agent ──
-  const batchIds = (await listPool(manager, { ...params(), sort: "createdAt", dir: "asc" }, { batch: imported.batch })).items.map((r) => r.id);
-  await rejects("agents can't give leads out", () => assignPoolLeads(omar, { ids: batchIds, agentId: omar.id }), /managers/i);
-  const given = await assignPoolLeads(manager, { ids: batchIds.slice(0, 2), agentId: aisha.id });
-  check("the ticked numbers become the agent's leads", given.given === 2 && (await db.lead.count({ where: { id: { in: given.leadIds }, agentId: aisha.id, source: "LEADS_POOL" } })) === 2);
-  check("they're on her Leads page", (await listLeads(aisha, params(), { source: "LEADS_POOL" })).total >= 2);
-  const again = await assignPoolLeads(manager, { ids: batchIds, agentId: omar.id });
-  check("numbers already given are skipped", again.given === 1 && again.skipped === 2);
-  const self = await addPoolLead(manager, entry({ phone: "+974 5500 4001" }));
-  const mine = await takePoolLead(manager, self.id);
-  const noName = await db.lead.findUniqueOrThrow({ where: { id: mine.leadId } });
-  check("managers can take one themselves; no name → named after the number", noName.agentId === manager.id && noName.fullName === noName.phone);
+  // ── Managers give or take directly ──
+  const direct = await assignPoolLead(manager, { id: ids[0], agentId: omar.id });
+  check("a manager can give a pool lead straight to an agent", (await db.lead.findUniqueOrThrow({ where: { id: direct.leadId } })).agentId === omar.id);
+  check("giving it declines the other waiting requests", (await db.poolLeadRequest.findFirstOrThrow({ where: { poolLeadId: ids[0], requestedById: aisha.id } })).status === "REJECTED");
+  const taken = await requestPoolLead(manager, ids[1]);
+  check("a manager's “Get this lead” takes it straight away", taken.status === "APPROVED" && (await db.lead.findUniqueOrThrow({ where: { id: taken.leadId! } })).agentId === manager.id);
+  const noName = await db.lead.findUniqueOrThrow({ where: { id: taken.leadId! } });
+  check("a lead without a name is named after its number", noName.fullName === noName.phone);
+  await rejects("a taken lead can't be given twice", () => assignPoolLead(manager, { id: ids[0], agentId: aisha.id }), /already given/i);
 
   // ── Editing and removing ──
-  const editable = await addPoolLead(manager, entry({ phone: "+974 5500 6001" }));
-  await updatePoolLead(manager, { ...entry({ phone: "+974 5500 6001", fullName: "Owner Saad", notes: "2 villas" }), id: editable.id });
-  check("managers can edit an entry", (await db.poolLead.findUniqueOrThrow({ where: { id: editable.id } })).fullName === "Owner Saad");
-  await rejects("agents can't edit", () => updatePoolLead(omar, { ...entry({ phone: "+974 5500 6001" }), id: editable.id }), /managers/i);
+  await updatePoolLead(manager, { ...entry({ phone: "+974 3311 2200", fullName: "Owner Saad", notes: "2 villas" }), id: owner.id });
+  check("managers can edit an entry", (await db.poolLead.findUniqueOrThrow({ where: { id: owner.id } })).fullName === "Owner Saad");
+  await rejects("agents can't edit", () => updatePoolLead(omar, { ...entry({ phone: "+974 3311 2200" }), id: owner.id }), /managers/i);
   await rejects("taken entries are edited on the Leads page", () => updatePoolLead(manager, { ...entry({ phone: "+974 6600 1122" }), id: buyer.id }), /Leads page/);
-  await rejects("agents can't remove entries", () => deletePoolLeads(omar, [owner.id]), /managers/i);
-  const spare = await addPoolLead(manager, entry({ phone: "+974 5500 5001" }));
-  check("managers can remove several at once", (await deletePoolLeads(manager, [buyer.id, spare.id])).removed === 2);
+  await rejects("agents can't remove entries", () => deletePoolLead(omar, owner.id), /managers/i);
+  await deletePoolLead(manager, buyer.id);
   check("removing a taken entry keeps the lead", (await db.lead.count({ where: { id: lead.id } })) === 1);
   const activity = await db.activity.findMany({ where: { entityType: "POOL_LEAD" }, select: { description: true } });
   check("pool changes are in the activity log", activity.length >= 5);

@@ -115,11 +115,10 @@ public values (`frontend/.env.example`).
   deals, notes, activity.
 - **Leads** — Kanban pipeline (drag & drop, or "Move to" menu for keyboard/touch) and a
   table view; assignment, priority, requirements, shortlisted properties, convert to client.
-- **Leads pool** (`/leads-pool`) — managers and admins add numbers: import an Excel (.xlsx) or
-  CSV file, paste a list, or add one at a time. Only the phone is required; needs are optional
-  (e.g. just a private owner's number). Agents see each number masked (`+9745******7`) and press
-  *Get this lead* — it becomes their lead at once, on their Leads page with the full details.
-  Managers can tick numbers (or "select the first 20") and give them to an agent in one go.
+- **Leads pool** (`/leads-pool`) — managers and admins add numbers (one at a time or pasted
+  as a list; only the phone is required, needs are optional — e.g. just a private owner's
+  number). Agents see each number masked (`+9745******7`) and press *Get this lead*; a manager
+  approves it and it becomes a normal lead on the agent's Leads page with the full details.
 - **Clients** — buyers, tenants, investors, landlords, sellers with shortlist, viewings,
   deals, tasks, source leads.
 - **Viewings** — month calendar and list; confirm / complete / no-show / cancel;
@@ -256,15 +255,13 @@ All enforced in the service layer (board, menus, forms and API alike):
 - **24-hour rule** — `reassignStaleLeads()` (scheduler / cron) moves leads still `NEW` with an
   agent `Settings.leadAutoReassignHours` after `Lead.assignedAt` to `leadEscalationUserId` (or
   the first admin). `bulkReassignLeads()` moves an agent's open leads in one go.
-- **Leads pool** (`services/leads-pool.ts`, `services/pool-import.ts`) — `PoolLead` (only
-  `phone` required; `batch` = the file or paste it came from). *Get this lead* or a manager's
-  "give to agent" turns it into a `Lead` (source `LEADS_POOL`, status New, the usual response
-  task) and marks the entry `TAKEN`; the claim is a conditional update, so two agents can't get
-  the same number. Imports recognise columns by heading (English or Arabic: phone/mobile/رقم,
-  name, type, rent or sale, area, bedrooms, budget "12,000 - 15,000" or "1.2M", notes); other
-  columns go into the notes; numbers already in the pool are skipped. Masking is done on the
-  server: agents never receive a pool number (or an e-mail, or a number typed into the notes)
-  until it is theirs, and can't search the pool by digits.
+- **Leads pool** (`services/leads-pool.ts`) — `PoolLead` (only `phone` required) →
+  `PoolLeadRequest` (agent's *Get this lead*, at most 10 waiting per agent; the escalation user
+  gets an approval task) → approved by a manager → a new `Lead` (source `LEADS_POOL`, status
+  New, assigned to the agent, usual response task); the entry becomes `TAKEN` and other waiting
+  requests are declined. Managers can also give an entry straight to an agent or take it
+  themselves. Masking is done on the server: agents never receive a pool number (or an e-mail,
+  or a number typed into the notes) until it is theirs, and can't search the pool by digits.
 - **Contracts** — `ContractTemplate` (admin-edited text with `{{placeholders}}` + fields for
   agents) → `Contract` (rendered snapshot with its values and template version). Rendering
   escapes everything (`lib/contract-format.ts`); printable page at `/contracts/:id`.
