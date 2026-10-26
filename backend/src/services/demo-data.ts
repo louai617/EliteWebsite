@@ -128,6 +128,7 @@ export async function clearDemoData({ moveFilesTo }: { moveFilesTo?: string } = 
     await tx.property.deleteMany();
     await tx.owner.deleteMany();
     // Their sessions, password codes and personal daily tasks go with them (cascade).
+    await tx.agentPayout.deleteMany();
     await tx.user.deleteMany({ where: { role: { not: "ADMIN" } } });
     // ELT-1001, DL-1001… again.
     await tx.counter.deleteMany();

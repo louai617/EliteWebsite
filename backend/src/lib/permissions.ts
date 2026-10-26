@@ -37,6 +37,8 @@ export const PERMISSIONS = [
   "performance.viewTeam",
   "performance.configure",
   "imports.run",
+  /** Pay agents from their commission share (vouchers). */
+  "payouts.manage",
 ] as const;
 
 export type Permission = (typeof PERMISSIONS)[number];
@@ -58,7 +60,7 @@ const MANAGER_PERMISSIONS: Permission[] = [
 
 /** The role → permission matrix. */
 export const ROLE_PERMISSIONS: Record<Role, ReadonlySet<Permission>> = {
-  ADMIN: new Set<Permission>([...MANAGER_PERMISSIONS, "settings.edit", "performance.configure"]),
+  ADMIN: new Set<Permission>([...MANAGER_PERMISSIONS, "settings.edit", "performance.configure", "payouts.manage"]),
   MANAGER: new Set<Permission>(MANAGER_PERMISSIONS),
   AGENT: new Set<Permission>(["crm.access"]),
   /** Retired client-portal accounts: no permissions (they can no longer sign in). */

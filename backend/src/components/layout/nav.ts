@@ -1,5 +1,6 @@
 import {
   Activity,
+  Banknote,
   BarChart3,
   Building2,
   CalendarClock,
@@ -83,6 +84,7 @@ export const NAV: NavGroup[] = [
     items: [
       { href: "/reports", label: "Reports", icon: BarChart3 },
       { href: "/performance", label: "Performance", icon: Gauge },
+      { href: "/commissions", label: "Commissions", icon: Banknote },
       { href: "/activity", label: "Activity", icon: Activity },
     ],
   },

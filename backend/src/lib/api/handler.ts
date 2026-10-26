@@ -60,7 +60,7 @@ const MAX_BODY_BYTES = 5 * 1024 * 1024;
 const MAX_MULTIPART_BYTES = 11 * 1024 * 1024;
 
 
-function clientIp(request: Request) {
+export function clientIp(request: Request) {
   return request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || request.headers.get("x-real-ip") || "local";
 }
 

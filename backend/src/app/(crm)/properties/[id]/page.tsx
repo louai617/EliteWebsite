@@ -29,6 +29,8 @@ import { getSettings } from "@/services/settings";
 import { deletePropertyAction } from "@/actions/properties";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
+import { ListingInterestCard } from "@/components/properties/listing-interest";
+import { listingInterest } from "@/services/listing-stats";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { PageHeader } from "@/components/shared/page-header";
@@ -69,7 +71,7 @@ export default async function PropertyPage({ params }: PageProps<"/properties/[i
   const websiteLive = property.websitePublished && (property.status === "AVAILABLE" || property.status === "RESERVED");
   const websiteUrl = `${CLIENT_APP_URL}/en/properties/${encodeURIComponent(property.reference)}`;
 
-  const [notes, activity, agents, settings, media] = await Promise.all([listNotes("property", id), timeline("propertyId", id, 40), listAssignableUsers(), getSettings(), listMedia(id)]);
+  const [notes, activity, agents, settings, media, interest] = await Promise.all([listNotes("property", id), timeline("propertyId", id, 40), listAssignableUsers(), getSettings(), listMedia(id), listingInterest(id)]);
   const viewer = toViewer(user);
   const amenities = AMENITIES.filter((a) => property[a.key]);
   const propertyOption = { id: property.id, label: `${property.reference} · ${property.title}`, hint: property.area };
@@ -383,6 +385,8 @@ export default async function PropertyPage({ params }: PageProps<"/properties/[i
             </CardContent>
           </Card>
 
+          <ListingInterestCard interest={interest} />
+
           <Card>
             <CardHeader>
               <CardTitle>Owner</CardTitle>
@@ -419,6 +423,9 @@ export default async function PropertyPage({ params }: PageProps<"/properties/[i
                 <div className="space-y-1.5 text-sm">
                   <AgentCell agent={property.agent} />
                   <p className="text-xs text-muted-foreground">{[property.agent.phone, property.agent.email].filter(Boolean).join(" · ")}</p>
+                  {!property.agent.phone && (
+                    <p className="text-xs text-amber-700">No phone on this agent&apos;s account — the website&apos;s Call and WhatsApp buttons go to the office line. Add it in Users.</p>
+                  )}
                 </div>
               ) : (
                 <p className="text-sm text-muted-foreground">Unassigned</p>

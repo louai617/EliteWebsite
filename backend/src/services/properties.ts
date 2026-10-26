@@ -1,4 +1,5 @@
 import "server-only";
+import { interestByProperty } from "./listing-stats";
 import type { z } from "zod";
 import type { Prisma } from "@/generated/prisma/client";
 import type { Furnishing, ListingPurpose, PropertyCategory, PropertyStatus, PropertySubcategory, PropertyType } from "@/generated/prisma/enums";
@@ -110,11 +111,14 @@ export async function listProperties(actor: Actor, params: ListParams<(typeof PR
     db.property.findMany({ where, orderBy: [{ [params.sort]: params.dir }, { id: "asc" }], ...skipTake(params.page, params.pageSize), select: listSelect }),
     db.property.count({ where }),
   ]);
+  const interest = await interestByProperty(rows.map((r) => r.id));
   // Agents see which owner a listing belongs to only for their own listings.
   const items = rows.map(({ images, ...row }) => ({
     ...row,
     imageUrl: images[0]?.thumbUrl ?? images[0]?.url ?? null,
     owner: canSeeOwnerContact(actor, row) ? row.owner : null,
+    /** Website views and Call / WhatsApp presses, last 30 days. */
+    interest: interest.get(row.id) ?? { views: 0, calls: 0, whatsapps: 0 },
   }));
   return paginate(items, total, params.page, params.pageSize);
 }

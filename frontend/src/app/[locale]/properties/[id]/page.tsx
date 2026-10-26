@@ -21,6 +21,7 @@ import MortgageCalculator from '@/components/properties/detail/MortgageCalculato
 import MarketComparison from '@/components/properties/detail/MarketComparison';
 import AgentPanel from '@/components/properties/detail/AgentPanel';
 import StickyContactBar from '@/components/properties/detail/StickyContactBar';
+import ListingViewTracker from '@/components/properties/detail/ListingViewTracker';
 import LeadForm from '@/components/properties/LeadForm';
 import PropertyCard from '@/components/properties/PropertyCard';
 
@@ -644,7 +645,7 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
                 agent={property.agent}
                 propertyId={property._id}
                 shareTitle={title}
-                fallbackPhone={company.contact.phones[0]}
+                fallbackPhone={company.contact.support.phone}
                 reservable={property.status === 'available'}
               />
               <LeadForm propertyId={property._id} />
@@ -653,9 +654,11 @@ export default async function PropertyDetailPage({ params }: { params: Promise<P
         </div>
       </div>
 
+      <ListingViewTracker reference={property._id} />
       <StickyContactBar
-        phone={property.agent.phone ?? company.contact.phones[0]}
-        whatsapp={property.agent.whatsapp ?? company.contact.phonesRaw[0]}
+        reference={property._id}
+        phone={property.agent.phone ?? company.contact.support.phone}
+        whatsapp={property.agent.whatsapp ?? company.contact.support.raw}
         price={`${priceLabel}${frequencySuffix}`}
         shareTitle={title}
       />

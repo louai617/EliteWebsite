@@ -10,6 +10,7 @@ import {
   MessageCircle
 } from 'lucide-react';
 import { useLocale } from 'next-intl';
+import { company } from '@/data/company';
 import { api, errorMessage } from '@/lib/api';
 
 interface Message {
@@ -94,7 +95,8 @@ const ChatbotWidget = () => {
       <div className="fixed bottom-6 right-6 z-[9999] flex flex-col items-end gap-4">
         {/* WhatsApp Button */}
         <a 
-          href="https://wa.me/97455551234" 
+          href={`https://wa.me/${company.contact.support.raw}`}
+          aria-label="WhatsApp"
           target="_blank" 
           rel="noopener noreferrer"
           className="bg-green-500 text-white p-4 rounded-full shadow-2xl hover:scale-110 transition-transform flex items-center justify-center"

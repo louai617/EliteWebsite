@@ -77,6 +77,20 @@ export function PropertiesTable({ rows, viewer, filtered }: { rows: PropertyList
     { id: "furnishing", header: "Furnishing", defaultHidden: true, cell: (p) => (p.furnishing ? FURNISHING_META[p.furnishing].label : "—") },
     { id: "agent", header: "Agent", cell: (p) => <AgentCell agent={p.agent} /> },
     { id: "owner", header: "Owner", defaultHidden: true, cell: (p) => (p.owner ? <Link href={`/owners/${p.owner.id}`} className="text-[13px] hover:underline">{p.owner.fullName}</Link> : <span className="text-muted-foreground">—</span>) },
+    {
+      id: "clicks",
+      header: "Website (30 d)",
+      className: "tabular text-xs whitespace-nowrap",
+      cell: (p) =>
+        p.interest.views || p.interest.calls || p.interest.whatsapps ? (
+          <span title={`${p.interest.views} views · ${p.interest.calls} calls · ${p.interest.whatsapps} WhatsApp (last 30 days)`}>
+            {p.interest.views} views
+            <span className="text-muted-foreground"> · {p.interest.calls + p.interest.whatsapps} contacts</span>
+          </span>
+        ) : (
+          <span className="text-muted-foreground">—</span>
+        ),
+    },
     { id: "interest", header: "Leads", defaultHidden: true, className: "tabular text-center", headClassName: "text-center", cell: (p) => p._count.interests },
     { id: "updated", header: "Updated", sortKey: "updatedAt", className: "text-xs whitespace-nowrap text-muted-foreground", cell: (p) => formatDate(p.updatedAt) },
     {

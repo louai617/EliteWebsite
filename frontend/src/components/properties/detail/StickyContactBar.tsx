@@ -3,8 +3,11 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { Phone, MessageSquare } from 'lucide-react';
+import { trackListing } from '@/lib/track';
 
 interface StickyContactBarProps {
+  /** Listing reference (ELT-…), for counting Call / WhatsApp presses. */
+  reference: string;
   phone: string | null;
   whatsapp: string | null;
   price: string;
@@ -16,6 +19,7 @@ interface StickyContactBarProps {
  * past the gallery, so it never covers the first impression of the property.
  */
 export default function StickyContactBar({
+  reference,
   phone,
   whatsapp,
   price,
@@ -44,6 +48,7 @@ export default function StickyContactBar({
         {phone && (
         <a
           href={`tel:${phone.replace(/\s+/g, '')}`}
+          onClick={() => trackListing(reference, 'call')}
           tabIndex={visible ? 0 : -1}
           className="flex items-center gap-2 rounded-xl bg-secondary px-4 py-3 text-sm font-bold text-white transition hover:bg-primary"
         >
@@ -54,6 +59,7 @@ export default function StickyContactBar({
         {whatsapp && (
         <a
           href={`https://wa.me/${whatsapp}?text=${encodeURIComponent(shareTitle)}`}
+          onClick={() => trackListing(reference, 'whatsapp')}
           target="_blank"
           rel="noopener noreferrer"
           tabIndex={visible ? 0 : -1}

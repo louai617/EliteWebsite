@@ -97,7 +97,7 @@ enum LeadSource {
   REFERRAL
   WALK_IN
   PHONE
-  /// Taken from the leads pool (approved by a manager).
+  /// Taken from the leads pool.
   LEADS_POOL
   OTHER
 }
@@ -293,6 +293,7 @@ enum EntityType {
   CONTRACT
   RESERVATION
   POOL_LEAD
+  PAYOUT
 }
 
 enum ActivityAction {
@@ -352,6 +353,9 @@ model User {
   passRequests         LeadPassRequest[]   @relation("PassRequester")
   passDecisions        LeadPassRequest[]   @relation("PassDecider")
   poolLeadsAdded       PoolLead[]          @relation("PoolLeadCreator")
+  payouts              AgentPayout[]       @relation("PayoutAgent")
+  payoutsMade          AgentPayout[]       @relation("PayoutCreator")
+  payoutsVoided        AgentPayout[]       @relation("PayoutVoider")
   poolLeadsTaken       PoolLead[]          @relation("PoolLeadTaker")
   editedTemplates      ContractTemplate[]
   propertyMedia        PropertyMedia[]
@@ -522,6 +526,8 @@ model Property {
   @@index([ownerId])
   @@index([createdAt])
   @@index([title])
+  /// Website interest per day (views, calls, WhatsApp clicks).
+  stats ListingStat[]
 }
 
 model PropertyImage {
@@ -1314,6 +1320,62 @@ model PoolLead {
   @@index([status, createdAt])
   @@index([phoneDigits])
   @@index([batch])
+}
+
+// ───────────────────────────── Website interest ─────────────────────────────
+
+/**
+ * How many people looked at a listing on the website and pressed Call or WhatsApp, per
+ * business day (Doha). Repeat events from the same visitor are counted once per half hour.
+ */
+model ListingStat {
+  propertyId String
+  property   Property @relation(fields: [propertyId], references: [id], onDelete: Cascade)
+  /// Business date, YYYY-MM-DD (Asia/Qatar).
+  day        String
+  views      Int      @default(0)
+  calls      Int      @default(0)
+  whatsapps  Int      @default(0)
+
+  @@id([propertyId, day])
+  @@index([day])
+}
+
+// ───────────────────────────── Agent payouts ─────────────────────────────
+
+enum PayoutMethod {
+  CASH
+  BANK_TRANSFER
+  CHEQUE
+  OTHER
+}
+
+/**
+ * Money paid to an agent from their commission share. The balance is the agent's share of
+ * closed deals minus their (not voided) payouts; each payout is a voucher (PV-1001) that can
+ * be printed or saved as PDF. A wrong payout is voided with a reason, never deleted.
+ */
+model AgentPayout {
+  id            String       @id @default(cuid())
+  reference     String       @unique
+  agentId       String
+  agent         User         @relation("PayoutAgent", fields: [agentId], references: [id], onDelete: Restrict)
+  amount        Int
+  method        PayoutMethod @default(CASH)
+  note          String?
+  /// Balance just before and after this payout (kept on the voucher).
+  balanceBefore Int
+  balanceAfter  Int
+  paidAt        DateTime     @default(now())
+  createdById   String?
+  createdBy     User?        @relation("PayoutCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  voidedAt      DateTime?
+  voidReason    String?
+  voidedById    String?
+  voidedBy      User?        @relation("PayoutVoider", fields: [voidedById], references: [id], onDelete: SetNull)
+  createdAt     DateTime     @default(now())
+
+  @@index([agentId, paidAt])
 }
 
 // ───────────────────────────── Password reset & e-mail ─────────────────────────────

@@ -6,6 +6,7 @@ import { useLocale, useTranslations } from 'next-intl';
 import { CreditCard, KeyRound, Landmark, Loader2, X } from 'lucide-react';
 import { api, ApiError, errorMessage } from '@/lib/api';
 import type { ReservationQuote } from '@/lib/api-types';
+import ModalPortal from './ModalPortal';
 import GuestDetails, { contactProblem, EMPTY_CONTACT, type GuestContact } from './GuestDetails';
 
 /**
@@ -88,6 +89,7 @@ export default function ReserveHome({ reference }: { reference: string }) {
       </button>
 
       {open && (
+        <ModalPortal>
         <div className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" onClick={() => !busy && setOpen(false)}>
           <div role="dialog" aria-modal="true" aria-labelledby="reserve-title" className="max-h-[92vh] w-full max-w-lg overflow-y-auto rounded-t-3xl bg-white p-6 shadow-2xl sm:rounded-3xl" onClick={(e) => e.stopPropagation()}>
             <div className="mb-4 flex items-start justify-between gap-4">
@@ -165,6 +167,7 @@ export default function ReserveHome({ reference }: { reference: string }) {
             )}
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   );

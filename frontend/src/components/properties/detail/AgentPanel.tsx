@@ -8,6 +8,7 @@ import type { ListingAgent } from '@/lib/listing-types';
 import SaveButton from '@/components/listings/SaveButton';
 import BookViewing from '@/components/listings/BookViewing';
 import ReserveHome from '@/components/listings/ReserveHome';
+import { trackListing } from '@/lib/track';
 
 interface AgentPanelProps {
   agent: ListingAgent;
@@ -96,6 +97,7 @@ export default function AgentPanel({ agent, propertyId, shareTitle, fallbackPhon
         {phone && (
         <a
           href={`tel:${phone.replace(/\s+/g, '')}`}
+          onClick={() => trackListing(propertyId, 'call')}
           className="flex items-center justify-center gap-2 rounded-xl bg-secondary py-3.5 font-bold text-white transition hover:bg-primary focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"
         >
           <Phone className="h-4 w-4" aria-hidden="true" />
@@ -105,6 +107,7 @@ export default function AgentPanel({ agent, propertyId, shareTitle, fallbackPhon
         {whatsappHref && (
         <a
           href={whatsappHref}
+          onClick={() => trackListing(propertyId, 'whatsapp')}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-2 rounded-xl border-2 border-primary py-3.5 font-bold text-primary transition hover:bg-primary hover:text-white focus:outline-none focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2"

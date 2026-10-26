@@ -27,6 +27,7 @@ const ENTITY_LABELS: Record<EntityType, string> = {
   CONTRACT: "Contracts",
   RESERVATION: "Reservations",
   POOL_LEAD: "Leads pool",
+  PAYOUT: "Payouts",
 };
 
 export default async function ActivityPage({ searchParams }: PageProps<"/activity">) {

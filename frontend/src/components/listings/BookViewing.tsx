@@ -4,6 +4,7 @@ import React, { useEffect, useState } from 'react';
 import { useLocale, useTranslations } from 'next-intl';
 import { CalendarCheck, CalendarDays, CalendarPlus, Loader2, MapPin, X } from 'lucide-react';
 import SlotPicker from './SlotPicker';
+import ModalPortal from './ModalPortal';
 import GuestDetails, { contactProblem, EMPTY_CONTACT, type GuestContact } from './GuestDetails';
 import { api, ApiError, errorMessage } from '@/lib/api';
 import type { GuestBooking } from '@/lib/api-types';
@@ -117,6 +118,7 @@ export default function BookViewing({ reference, agentName, variant = 'primary',
       </button>
 
       {open && (
+        <ModalPortal>
         <div className="fixed inset-0 z-[10000] flex items-end justify-center bg-black/50 p-0 sm:items-center sm:p-4" onClick={() => setOpen(false)}>
           <div
             role="dialog"
@@ -195,6 +197,7 @@ export default function BookViewing({ reference, agentName, variant = 'primary',
             )}
           </div>
         </div>
+        </ModalPortal>
       )}
     </>
   );

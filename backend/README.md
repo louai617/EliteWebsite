@@ -120,6 +120,14 @@ public values (`frontend/.env.example`).
   (e.g. just a private owner's number). Agents see each number masked (`+9745******7`) and press
   *Get this lead* — it becomes their lead at once, on their Leads page with the full details.
   Managers can tick numbers (or "select the first 20") and give them to an agent in one go.
+- **Commissions** (`/commissions`) — each agent's share of closed deals, what has been paid and
+  what is still owed. Admins press *Pay*: the amount comes off the balance and a payment
+  voucher (PV-1001…) is issued — print it or save it as PDF. Agents see their own statement
+  (deals in, payments out, running balance). A wrong voucher is cancelled with a reason, never
+  deleted.
+- **Website interest** — every listing counts page views and presses of Call / WhatsApp on the
+  website (per day, a visitor counted once per half hour): see *Website interest* on the
+  property page and the *Website (30 d)* column in the properties table.
 - **Clients** — buyers, tenants, investors, landlords, sellers with shortlist, viewings,
   deals, tasks, source leads.
 - **Viewings** — month calendar and list; confirm / complete / no-show / cancel;

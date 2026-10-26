@@ -17,6 +17,7 @@ import {
   ImportRunStatus,
   ListingPurpose,
   PassRequestStatus,
+  PayoutMethod,
   PoolLeadStatus,
   PaymentMethod,
   Priority,
@@ -254,6 +255,13 @@ export const POOL_REQUEST_STATUS_META: MetaMap<PassRequestStatus> = {
   APPROVED: { label: "Approved", tone: "green" },
   REJECTED: { label: "Not approved", tone: "red" },
 };
+
+export const PAYOUT_METHOD_META = labelsOnly<PayoutMethod>({
+  CASH: "Cash",
+  BANK_TRANSFER: "Bank transfer",
+  CHEQUE: "Cheque",
+  OTHER: "Other",
+});
 
 export const RESERVATION_STATUS_META: MetaMap<ReservationStatus> = {
   AWAITING_PAYMENT: { label: "Awaiting payment", tone: "amber" },
