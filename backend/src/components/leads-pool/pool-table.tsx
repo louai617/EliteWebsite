@@ -9,7 +9,7 @@ import type { AgentOption, Viewer } from "@/types/options";
 import { assignPoolLeadsAction, deletePoolLeadsAction, takePoolLeadAction } from "@/actions/leads-pool";
 import { useAction } from "@/hooks/use-action";
 import { CUSTOMER_TYPE_META, POOL_LEAD_STATUS_META, PURPOSE_META, ROLE_META } from "@/lib/constants";
-import { formatDate, formatMoneyCompact } from "@/lib/format";
+import { formatDate, formatMoney } from "@/lib/format";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -26,8 +26,8 @@ import { PoolLeadSheet } from "./pool-form";
 
 function budget(p: PoolListItem) {
   if (p.budgetMin == null && p.budgetMax == null) return null;
-  if (p.budgetMin != null && p.budgetMax != null) return `${formatMoneyCompact(p.budgetMin)} – ${formatMoneyCompact(p.budgetMax).replace("QAR ", "")}`;
-  return p.budgetMax != null ? `≤ ${formatMoneyCompact(p.budgetMax)}` : `≥ ${formatMoneyCompact(p.budgetMin)}`;
+  if (p.budgetMin != null && p.budgetMax != null) return `${formatMoney(p.budgetMin)} – ${formatMoney(p.budgetMax).replace(/^QAR\s/, "")}`;
+  return p.budgetMax != null ? `≤ ${formatMoney(p.budgetMax)}` : `≥ ${formatMoney(p.budgetMin)}`;
 }
 
 /** Agents (and managers for themselves): the entry becomes their lead straight away. */

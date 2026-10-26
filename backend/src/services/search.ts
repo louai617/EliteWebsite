@@ -4,7 +4,7 @@ import { can, scope, type Actor } from "@/lib/permissions";
 import { CUSTOMER_TYPE_META, DEAL_STATUS_META, LEAD_STATUS_META, PROPERTY_CATEGORY_META, PROPERTY_STATUS_META, PROPERTY_SUBCATEGORY_META, ROLE_META, propertyClassLabel } from "@/lib/constants";
 import type { Prisma } from "@/generated/prisma/client";
 import type { PropertyCategory, PropertySubcategory } from "@/generated/prisma/enums";
-import { formatMoneyCompact } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { digitsOnly, like } from "@/lib/search";
 import type { LookupOption, SearchGroup } from "@/types/search";
 
@@ -123,7 +123,7 @@ export async function globalSearch(actor: Actor, raw: string, perGroup = 5): Pro
       items: properties.map((p) => ({
         id: p.id,
         title: `${p.reference} · ${p.title}`,
-        subtitle: [propertyClassLabel(p.category, p.subcategory), p.area, formatMoneyCompact(p.price, p.currency), p.owner ? `Owner: ${p.owner.fullName}` : null].filter(Boolean).join(" · "),
+        subtitle: [propertyClassLabel(p.category, p.subcategory), p.area, formatMoney(p.price, p.currency), p.owner ? `Owner: ${p.owner.fullName}` : null].filter(Boolean).join(" · "),
         badge: PROPERTY_STATUS_META[p.status].label,
         href: `/properties/${p.id}`,
       })),
@@ -134,7 +134,7 @@ export async function globalSearch(actor: Actor, raw: string, perGroup = 5): Pro
       items: deals.map((d) => ({
         id: d.id,
         title: `${d.reference} · ${d.client?.fullName ?? d.lead?.fullName ?? "—"}`,
-        subtitle: `${d.property.reference} · ${formatMoneyCompact(d.amount)}`,
+        subtitle: `${d.property.reference} · ${formatMoney(d.amount)}`,
         badge: DEAL_STATUS_META[d.status].label,
         href: `/deals/${d.id}`,
       })),

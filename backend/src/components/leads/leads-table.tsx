@@ -4,7 +4,7 @@ import Link from "next/link";
 import { UsersRound } from "lucide-react";
 import type { LeadListItem } from "@/services/leads";
 import { LEAD_SOURCE_META, LEAD_STATUS_META, PRIORITY_META, PURPOSE_META } from "@/lib/constants";
-import { formatDate, formatMoneyCompact } from "@/lib/format";
+import { formatDate, formatMoney } from "@/lib/format";
 import { DataTable, type Column } from "@/components/shared/data-table/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { EnumBadge } from "@/components/shared/enum-badge";
@@ -12,8 +12,8 @@ import { AgentCell } from "@/components/shared/user-avatar";
 
 function budget(l: LeadListItem) {
   if (l.budgetMin == null && l.budgetMax == null) return "—";
-  if (l.budgetMin != null && l.budgetMax != null) return `${formatMoneyCompact(l.budgetMin)} – ${formatMoneyCompact(l.budgetMax).replace("QAR ", "")}`;
-  return l.budgetMax != null ? `≤ ${formatMoneyCompact(l.budgetMax)}` : `≥ ${formatMoneyCompact(l.budgetMin)}`;
+  if (l.budgetMin != null && l.budgetMax != null) return `${formatMoney(l.budgetMin)} – ${formatMoney(l.budgetMax).replace(/^QAR\s/, "")}`;
+  return l.budgetMax != null ? `≤ ${formatMoney(l.budgetMax)}` : `≥ ${formatMoney(l.budgetMin)}`;
 }
 
 export function LeadsTable({ rows, filtered }: { rows: LeadListItem[]; filtered: boolean }) {

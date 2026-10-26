@@ -4,7 +4,7 @@ import Link from "next/link";
 import { UserRound } from "lucide-react";
 import type { ClientListItem } from "@/services/clients";
 import { CUSTOMER_TYPE_META } from "@/lib/constants";
-import { formatDate, formatMoneyCompact } from "@/lib/format";
+import { formatDate, formatMoney } from "@/lib/format";
 import { DataTable, type Column } from "@/components/shared/data-table/data-table";
 import { EmptyState } from "@/components/shared/empty-state";
 import { AgentCell } from "@/components/shared/user-avatar";
@@ -32,7 +32,7 @@ export function ClientsTable({ rows, filtered }: { rows: ClientListItem[]; filte
       header: "Budget",
       sortKey: "budgetMax",
       className: "tabular text-[13px] whitespace-nowrap",
-      cell: (c) => (c.budgetMax != null ? `${c.budgetMin != null ? formatMoneyCompact(c.budgetMin) + " – " : "≤ "}${formatMoneyCompact(c.budgetMax)}` : "—"),
+      cell: (c) => (c.budgetMax != null ? `${c.budgetMin != null ? formatMoney(c.budgetMin) + " – " : "≤ "}${formatMoney(c.budgetMax)}` : "—"),
     },
     { id: "nationality", header: "Nationality", defaultHidden: true, cell: (c) => c.nationality ?? "—" },
     { id: "activity", header: "Viewings / deals", className: "tabular text-[13px]", cell: (c) => `${c._count.viewings} / ${c._count.deals}` },

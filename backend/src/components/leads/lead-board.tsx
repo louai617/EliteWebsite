@@ -9,7 +9,7 @@ import type { LeadStatus } from "@/generated/prisma/enums";
 import type { LeadListItem } from "@/services/leads";
 import { setLeadStatusAction } from "@/actions/leads";
 import { LEAD_PIPELINE, LEAD_SOURCE_META, LEAD_STATUS_META, PRIORITY_META } from "@/lib/constants";
-import { formatMoneyCompact } from "@/lib/format";
+import { formatMoney } from "@/lib/format";
 import { RelativeTime } from "@/components/shared/relative-time";
 import { cn } from "@/lib/utils";
 import { Badge } from "@/components/ui/badge";
@@ -91,7 +91,7 @@ function LeadCard({ lead, onMove, dragging, onDragStart, onDragEnd }: { lead: Le
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
         {(lead.priority === "HIGH" || lead.priority === "URGENT") && <Badge tone={priority.tone}>{priority.label}</Badge>}
         <Badge tone="neutral">{LEAD_SOURCE_META[lead.source].label}</Badge>
-        {lead.budgetMax != null && <span className="tabular text-xs text-muted-foreground">≤ {formatMoneyCompact(lead.budgetMax)}</span>}
+        {lead.budgetMax != null && <span className="tabular text-xs text-muted-foreground">≤ {formatMoney(lead.budgetMax)}</span>}
       </div>
       <div className="mt-2.5 flex items-center justify-between gap-2 border-t pt-2 text-xs text-muted-foreground">
         <span className="flex min-w-0 items-center gap-1.5">

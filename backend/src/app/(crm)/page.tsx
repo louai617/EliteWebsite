@@ -4,7 +4,7 @@ import { ArrowDownRight, ArrowRight, ArrowUpRight, CalendarClock, CheckSquare, H
 import { requireUser } from "@/lib/auth/session";
 import { toViewer } from "@/lib/viewer";
 import { LEAD_STATUS_META } from "@/lib/constants";
-import { formatDayLabel, formatMoney, formatMoneyCompact, formatNumber, formatPercent, formatTime, formatZoned, zonedNow } from "@/lib/format";
+import { formatDayLabel, formatMoney, formatNumber, formatPercent, formatTime, formatZoned, zonedNow } from "@/lib/format";
 import { dashboardStats, teamPerformance } from "@/services/dashboard";
 import { recentActivity } from "@/services/activity";
 import { upcomingViewings } from "@/services/viewings";
@@ -79,18 +79,18 @@ export default async function DashboardPage() {
       <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
         <StatCard
           label="Pipeline value"
-          value={formatMoneyCompact(stats.deals.pipelineValue)}
+          value={formatMoney(stats.deals.pipelineValue)}
           icon={TrendingUp}
           accent
           href="/deals?status=open"
-          hint={`${stats.deals.active} active deals · ${formatMoneyCompact(stats.deals.pipelineCommission)} expected commission`}
+          hint={`${stats.deals.active} active deals · ${formatMoney(stats.deals.pipelineCommission)} expected commission`}
         />
         <StatCard
           label="Commission earned"
-          value={formatMoneyCompact(stats.deals.wonCommission)}
+          value={formatMoney(stats.deals.wonCommission)}
           icon={Wallet}
           href="/deals?status=CLOSED"
-          hint={`${formatMoneyCompact(monthCommission)} this month · ${formatMoneyCompact(stats.deals.wonValue)} closed`}
+          hint={`${formatMoney(monthCommission)} this month · ${formatMoney(stats.deals.wonValue)} closed`}
         />
         <StatCard
           label="Leads this month"
@@ -163,7 +163,7 @@ export default async function DashboardPage() {
                 key: m.key,
                 label: m.label,
                 value: m.value,
-                details: [`${m.deals} deal${m.deals === 1 ? "" : "s"} · ${formatMoneyCompact(m.dealValue)} value`],
+                details: [`${m.deals} deal${m.deals === 1 ? "" : "s"} · ${formatMoney(m.dealValue)} value`],
               }))}
               format="money"
               valueLabel="commission"
@@ -340,7 +340,7 @@ export default async function DashboardPage() {
                     <TableCell className="tabular text-right">{a.activeLeads}</TableCell>
                     <TableCell className="tabular text-right">{a.viewingsDone}</TableCell>
                     <TableCell className="tabular text-right">{a.openDeals}</TableCell>
-                    <TableCell className="tabular text-right">{formatMoneyCompact(a.pipeline)}</TableCell>
+                    <TableCell className="tabular text-right">{formatMoney(a.pipeline)}</TableCell>
                     <TableCell className="tabular text-right">{a.wonDeals}</TableCell>
                     <TableCell className="tabular text-right font-medium">{formatMoney(a.commission)}</TableCell>
                   </TableRow>
