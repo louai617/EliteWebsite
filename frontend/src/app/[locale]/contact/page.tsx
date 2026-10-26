@@ -2,6 +2,7 @@ import React from 'react';
 import { getTranslations } from 'next-intl/server';
 import { Mail, Phone, MapPin, MessageSquare, Clock } from 'lucide-react';
 import LeadForm from '@/components/properties/LeadForm';
+import { company } from '@/data/company';
 
 export default async function ContactPage({ params }: { params: Promise<{ locale: string }> }) {
   const { locale } = await params;
@@ -14,7 +15,7 @@ export default async function ContactPage({ params }: { params: Promise<{ locale
         <div className="max-w-3xl mx-auto text-center mb-16">
           <h1 className="text-4xl md:text-5xl font-bold text-gray-900 mb-6">{t('contact')}</h1>
           <p className="text-xl text-gray-500 font-light">
-            Have a question or looking for your next dream home in Qatar? We're here to help. Contact us through any of the channels below.
+            Have a question or looking for your next dream home in Qatar? We&apos;re here to help. Contact us through any of the channels below.
           </p>
         </div>
 
@@ -31,7 +32,7 @@ export default async function ContactPage({ params }: { params: Promise<{ locale
                   </div>
                   <div>
                     <p className="text-sm text-gray-500 mb-1">Call Us</p>
-                    <p className="text-lg font-bold text-gray-900">+974 4444 8888</p>
+                    <a href={`tel:+${company.contact.phonesRaw[0]}`} className="text-lg font-bold text-gray-900 hover:text-[#b98f42]" dir="ltr">{company.contact.phones[0]}</a>
                   </div>
                 </div>
 
@@ -41,7 +42,7 @@ export default async function ContactPage({ params }: { params: Promise<{ locale
                   </div>
                   <div>
                     <p className="text-sm text-gray-500 mb-1">WhatsApp</p>
-                    <p className="text-lg font-bold text-gray-900">+974 5555 1234</p>
+                    <a href={`https://wa.me/${company.contact.support.raw}`} target="_blank" rel="noopener noreferrer" className="text-lg font-bold text-gray-900 hover:text-[#b98f42]" dir="ltr">{company.contact.support.phone}</a>
                   </div>
                 </div>
 

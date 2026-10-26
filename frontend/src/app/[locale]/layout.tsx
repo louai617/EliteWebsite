@@ -1,4 +1,3 @@
-import type { Metadata } from "next";
 import { Cairo, Work_Sans } from "next/font/google";
 import "@/app/globals.css";
 import { NextIntlClientProvider, hasLocale } from 'next-intl';
@@ -8,7 +7,6 @@ import { routing } from '@/i18n/routing';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import ChatbotWidget from '@/components/chatbot/ChatbotWidget';
-import { AuthProvider } from '@/lib/AuthContext';
 
 const workSans = Work_Sans({ 
   subsets: ["latin"],
@@ -30,7 +28,7 @@ export async function generateMetadata({ params }: { params: Promise<{ locale: s
 
   return {
     metadataBase: new URL(
-      process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000'
+      process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3001'
     ),
     title: {
       default: "ELITE Real Estate | Elevating the Way You Live",
@@ -79,16 +77,14 @@ export default async function RootLayout({
     <html lang={locale} dir={isRtl ? 'rtl' : 'ltr'} data-scroll-behavior="smooth">
       <body className={`${workSans.variable} ${cairo.variable} font-sans`}>
         <NextIntlClientProvider messages={messages} locale={locale}>
-          <AuthProvider>
-            <div className="flex flex-col min-h-screen">
-              <Navbar />
-              <div className="flex-grow">
-                {children}
-              </div>
-              <Footer />
-              <ChatbotWidget />
+          <div className="flex flex-col min-h-screen">
+            <Navbar />
+            <div className="flex-grow">
+              {children}
             </div>
-          </AuthProvider>
+            <Footer />
+            <ChatbotWidget />
+          </div>
         </NextIntlClientProvider>
       </body>
     </html>

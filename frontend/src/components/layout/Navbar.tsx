@@ -5,19 +5,25 @@ import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useTranslations, useLocale } from 'next-intl';
-import { Menu, X, Globe, Phone, User } from 'lucide-react';
+import { Menu, X, Globe, Heart, LogIn } from 'lucide-react';
 import { clsx, type ClassValue } from 'clsx';
 import { twMerge } from 'tailwind-merge';
+import { CRM_URL } from '@/lib/api';
+import { useSavedHomes } from '@/lib/saved-homes';
 
 function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
+
+/** Agents and staff sign in to the agent app (CRM); the website has no visitor accounts. */
+const AGENT_PORTAL_URL = `${CRM_URL}/login`;
 
 const Navbar = () => {
   const t = useTranslations('common');
   const locale = useLocale();
   const pathname = usePathname();
   const router = useRouter();
+  const { count: savedCount } = useSavedHomes();
   const [isScrolled, setIsScrolled] = useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
@@ -97,16 +103,35 @@ const Navbar = () => {
               <Globe className="w-5 h-5" />
               {locale === 'en' ? 'عربي' : 'EN'}
             </button>
-            <Link 
-              href={`/${locale}/login`}
+
+            <Link
+              href={`/${locale}/saved`}
+              aria-label={`${t('saved_homes')}${savedCount ? ` (${savedCount})` : ''}`}
+              title={t('saved_homes')}
+              className={cn(
+                "relative transition-colors hover:text-[#b98f42]",
+                shouldShowSolidNav ? "text-gray-900" : "text-white"
+              )}
+            >
+              <Heart className="w-5 h-5" />
+              {savedCount > 0 && (
+                <span className="absolute -top-2 -right-2.5 min-w-[18px] rounded-full bg-[#b98f42] px-1 text-center text-[10px] font-bold leading-[18px] text-white">
+                  {savedCount}
+                </span>
+              )}
+            </Link>
+
+            <a
+              href={AGENT_PORTAL_URL}
               className={cn(
                 "flex items-center gap-2 font-bold transition-colors hover:text-[#b98f42]",
                 shouldShowSolidNav ? "text-gray-900" : "text-white"
               )}
             >
-              <User className="w-5 h-5" />
-              {t('login')}
-            </Link>
+              <LogIn className="w-5 h-5" />
+              {t('agent_portal')}
+            </a>
+
             <Link 
               href={`/${locale}/contact`}
               className="bg-[#b98f42] text-white px-6 py-2 rounded font-bold hover:bg-black transition-colors"
@@ -132,6 +157,7 @@ const Navbar = () => {
                 "p-2 rounded-full",
                 shouldShowSolidNav ? "text-black" : "text-white"
               )}
+              aria-label={isMobileMenuOpen ? "Close menu" : "Open menu"}
             >
               {isMobileMenuOpen ? <X className="w-6 h-6" /> : <Menu className="w-6 h-6" />}
             </button>
@@ -151,14 +177,22 @@ const Navbar = () => {
                 {link.name}
               </Link>
             ))}
-            <Link 
-              href={`/${locale}/login`}
+            <Link
+              href={`/${locale}/saved`}
               onClick={() => setIsMobileMenuOpen(false)}
               className="text-lg font-bold text-gray-900 py-2 border-b border-gray-100 flex items-center gap-2"
             >
-              <User className="w-5 h-5" />
-              {t('login')}
+              <Heart className="w-5 h-5" />
+              {t('saved_homes')}
+              {savedCount > 0 && <span className="rounded-full bg-[#b98f42] px-2 text-xs leading-5 text-white">{savedCount}</span>}
             </Link>
+            <a
+              href={AGENT_PORTAL_URL}
+              className="text-lg font-bold text-gray-900 py-2 border-b border-gray-100 flex items-center gap-2"
+            >
+              <LogIn className="w-5 h-5" />
+              {t('agent_portal')}
+            </a>
             <Link 
               href={`/${locale}/contact`}
               onClick={() => setIsMobileMenuOpen(false)}
