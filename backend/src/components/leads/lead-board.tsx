@@ -172,7 +172,7 @@ export function LeadBoard({ columns }: { columns: BoardColumn[] }) {
             <header className="flex items-center gap-2 px-3 py-2.5">
               <span className={cn("size-2 rounded-full", COLUMN_ACCENT[col.status])} aria-hidden />
               <h2 className="text-[13px] font-semibold">{LEAD_STATUS_META[col.status].label}</h2>
-              <span className="tabular ml-auto rounded bg-card px-1.5 text-xs text-muted-foreground">{col.total}</span>
+              {col.status !== "WON" && <span className="tabular ml-auto rounded bg-card px-1.5 text-xs text-muted-foreground">{col.total}</span>}
             </header>
             <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-2 pb-2">
               {col.items.map((lead) => (
@@ -188,7 +188,17 @@ export function LeadBoard({ columns }: { columns: BoardColumn[] }) {
                   onMove={(to) => move(lead.id, to)}
                 />
               ))}
-              {col.items.length === 0 && <p className="rounded-md border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">Drop leads here</p>}
+              {col.status === "WON" ? (
+                <p className="rounded-md border border-dashed border-emerald-300 bg-emerald-50/50 px-3 py-6 text-center text-xs text-muted-foreground">
+                  Drop a lead here to mark it as won. It then leaves this board and its deal waits on{" "}
+                  <Link href="/deals" className="font-medium text-emerald-700 underline-offset-2 hover:underline">
+                    Pending contracts
+                  </Link>{" "}
+                  until the contract is closed.
+                </p>
+              ) : (
+                col.items.length === 0 && <p className="rounded-md border border-dashed px-3 py-6 text-center text-xs text-muted-foreground">Drop leads here</p>
+              )}
               {col.total > col.items.length && (
                 <Link href={`/leads?view=table&status=${col.status}`} className="py-1 text-center text-xs text-muted-foreground hover:text-foreground">
                   +{col.total - col.items.length} more in table view

@@ -138,7 +138,8 @@ public values (`frontend/.env.example`).
   days are greyed out. A listing with no agent, or an agent with no free hours, has no online
   times (visitors are asked to call or WhatsApp).
 - **Pending contracts** (`/deals`) — when a lead is marked *Won* (booking form + proof of
-  payment) the lead leaves the Leads page and its deal waits here until the contract is ready. Closing it turns
+  payment) the lead leaves the Leads page and its deal waits here until the contract is ready. The board's
+  Won column is the drop zone for this. Closing it turns
   the buyer/tenant into a client and moves it to the *Closed (clients)* tab; cancelled ones sit
   under *Cancelled*. Commission = amount × %, split into agent/company shares from settings;
   closing marks the property Sold/Rented.

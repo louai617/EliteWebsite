@@ -176,13 +176,17 @@ export const LEAD_STATUS_META: MetaMap<LeadStatus> = {
   LOST: { label: "Lost", tone: "red" },
 };
 
-/** Pipeline column order for the Kanban board. Won leads leave the board: their deal is on the Pending contracts page. */
+/**
+ * Pipeline column order for the Kanban board. The Won column is a drop zone: a lead dropped there is
+ * marked won (booking paperwork) and leaves the board — its deal is followed on Pending contracts.
+ */
 export const LEAD_PIPELINE: LeadStatus[] = [
   LeadStatus.NEW,
   LeadStatus.CONTACTED,
   LeadStatus.QUALIFIED,
   LeadStatus.VIEWING_SCHEDULED,
   LeadStatus.NEGOTIATION,
+  LeadStatus.WON,
   LeadStatus.LOST,
 ];
 
