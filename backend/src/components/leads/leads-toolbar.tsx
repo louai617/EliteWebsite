@@ -14,7 +14,7 @@ export function LeadsToolbar({ agents, viewer, view }: { agents: AgentOption[]; 
   return (
     <Toolbar>
       <SearchInput placeholder="Search name, phone, area…" />
-      {view === "table" && <FilterSelect param="status" label="Status" options={options(LEAD_STATUS_META).filter((o) => o.value !== "WON")} />}
+      {view === "table" && <FilterSelect param="status" label="Status" options={options(LEAD_STATUS_META)} />}
       <FilterSelect param="source" label="Source" options={options(LEAD_SOURCE_META)} />
       <FilterSelect param="priority" label="Priority" options={options(PRIORITY_META)} />
       <FilterSelect param="purpose" label="Purpose" options={options(PURPOSE_META)} />

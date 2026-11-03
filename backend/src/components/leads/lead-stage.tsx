@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { CheckCircle2, ChevronDown, Circle, Clock, ShieldAlert, FileSignature, ThumbsDown, XCircle } from "lucide-react";
+import { CheckCircle2, ChevronDown, Circle, Clock, ShieldAlert, ThumbsDown, Trophy, XCircle } from "lucide-react";
 import type { LeadStatus } from "@/generated/prisma/enums";
 import { decideViewingPassAction, markLeadLostAction, markLeadWonAction, requestViewingPassAction, setLeadStatusAction } from "@/actions/leads";
 import { useAction } from "@/hooks/use-action";
@@ -32,7 +32,7 @@ export interface StageInfo {
   isManager: boolean;
 }
 
-/** Stages moved through the menu; Pending contract and Lost open their own dialogs. */
+/** Stages moved through the menu; Won and Lost open their own dialogs. */
 const MENU_STAGES = LEAD_PIPELINE.filter((s) => s !== "WON" && s !== "LOST");
 
 function Requirement({ done, label, children }: { done: boolean; label: React.ReactNode; children?: React.ReactNode }) {
@@ -64,8 +64,8 @@ function WonDialog({ open, onOpenChange, info }: { open: boolean; onOpenChange: 
     <Dialog open={open} onOpenChange={(v) => !won.pending && onOpenChange(v)}>
       <DialogContent className="sm:max-w-lg">
         <DialogHeader>
-          <DialogTitle>Send {info.lead.fullName} to pending contracts</DialogTitle>
-          <DialogDescription>The booking is confirmed: the deal moves to Pending contracts and the property is reserved. Once the contract is signed and the deal closed, they become a client.</DialogDescription>
+          <DialogTitle>Mark {info.lead.fullName} as won</DialogTitle>
+          <DialogDescription>Won means booked: the deal opens on the Pending contracts page and the property is reserved. When the contract is signed and the deal closed, they become a client.</DialogDescription>
         </DialogHeader>
         <ul className="divide-y rounded-md border px-3">
           <Requirement done={info.gate.passed} label={info.gate.viewingForm ? "Viewing form attached" : info.gate.pass?.status === "APPROVED" ? "Viewing pass approved" : "Viewing form or approved pass"}>
@@ -112,7 +112,7 @@ function WonDialog({ open, onOpenChange, info }: { open: boolean; onOpenChange: 
             disabled={!ready}
             onClick={() => void won.run({ id: info.lead.id, propertyId: propertyId ?? "", amount: Number(amount.replace(/[, ]/g, "")), notes: notes || null })}
           >
-            <FileSignature /> Send to pending contracts
+            <Trophy /> Mark as won
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -159,7 +159,7 @@ export function LeadStageControls({ info }: { info: StageInfo }) {
           </DropdownMenuRadioGroup>
           <DropdownMenuSeparator />
           <DropdownMenuItem disabled={info.lead.status === "WON"} onSelect={() => setWonOpen(true)}>
-            <FileSignature /> Pending contract…
+            <Trophy /> Won…
           </DropdownMenuItem>
           <DropdownMenuItem disabled={info.lead.status === "LOST"} onSelect={() => setLostOpen(true)}>
             <ThumbsDown /> Lost…
@@ -168,7 +168,7 @@ export function LeadStageControls({ info }: { info: StageInfo }) {
       </DropdownMenu>
       {!closed && (
         <Button onClick={() => setWonOpen(true)}>
-          <FileSignature /> Send to pending contracts
+          <Trophy /> Mark as won
         </Button>
       )}
       <WonDialog open={wonOpen} onOpenChange={setWonOpen} info={info} />
@@ -277,10 +277,10 @@ export function StageRequirements({ info }: { info: StageInfo }) {
             )}
           </span>
         </Requirement>
-        <Requirement done={!info.missingWonDocuments.includes("BOOKING_FORM")} label="Booking form — needed for a pending contract">
+        <Requirement done={!info.missingWonDocuments.includes("BOOKING_FORM")} label="Booking form — needed for Won">
           <AttachButton target="lead" targetId={info.lead.id} kind="BOOKING_FORM" label="Attach" />
         </Requirement>
-        <Requirement done={!info.missingWonDocuments.includes("PROOF_OF_PAYMENT")} label="Proof of payment — needed for a pending contract">
+        <Requirement done={!info.missingWonDocuments.includes("PROOF_OF_PAYMENT")} label="Proof of payment — needed for Won">
           <AttachButton target="lead" targetId={info.lead.id} kind="PROOF_OF_PAYMENT" label="Attach" />
         </Requirement>
       </ul>

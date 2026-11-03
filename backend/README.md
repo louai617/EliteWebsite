@@ -137,8 +137,8 @@ public values (`frontend/.env.example`).
   website only offers 45-minute viewings, every 30 minutes, inside an agent's free hours — other
   days are greyed out. A listing with no agent, or an agent with no free hours, has no online
   times (visitors are asked to call or WhatsApp).
-- **Pending contracts** (`/deals`) — a lead sent to *Pending contract* (booking form + proof of
-  payment) leaves the Leads page and waits here until the contract is ready. Closing it turns
+- **Pending contracts** (`/deals`) — when a lead is marked *Won* (booking form + proof of
+  payment) its deal waits here until the contract is ready; the lead stays in the Won column. Closing it turns
   the buyer/tenant into a client and moves it to the *Closed (clients)* tab; cancelled ones sit
   under *Cancelled*. Commission = amount × %, split into agent/company shares from settings;
   closing marks the property Sold/Rented.
@@ -261,7 +261,7 @@ All enforced in the service layer (board, menus, forms and API alike):
 - **Viewing step** — a lead moves to *Negotiation* only with a `VIEWING_FORM` document on the
   lead or an approved `LeadPassRequest` (agents ask, managers approve; a manager's own request
   is approved at once).
-- **Pending contract** (`markLeadWon`, status `WON` in the database) — requires the viewing step plus `BOOKING_FORM` and `PROOF_OF_PAYMENT`
+- **Won** (`markLeadWon`) — requires the viewing step plus `BOOKING_FORM` and `PROOF_OF_PAYMENT`
   documents (on the lead or its client). Opens the deal as `PENDING_CONTRACT`, reserves the
   property, moves the paperwork onto the deal and gives the agent a "Prepare the contract" task.
 - **Lost** (`markLeadLost`) — requires a reason (`Lead.lostReason`).

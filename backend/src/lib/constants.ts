@@ -172,21 +172,18 @@ export const LEAD_STATUS_META: MetaMap<LeadStatus> = {
   QUALIFIED: { label: "Qualified", tone: "violet" },
   VIEWING_SCHEDULED: { label: "Viewing", tone: "amber" },
   NEGOTIATION: { label: "Negotiation", tone: "gold" },
-  /** Booked: the lead now sits on the Pending contracts page (as its deal). */
-  WON: { label: "Pending contract", tone: "green" },
+  WON: { label: "Won", tone: "green" },
   LOST: { label: "Lost", tone: "red" },
 };
 
-/**
- * Pipeline column order for the Kanban board. A booked lead (status WON) leaves the leads
- * pipeline: it is followed on the Pending contracts page until its deal closes (→ Clients).
- */
+/** Pipeline column order for the Kanban board. */
 export const LEAD_PIPELINE: LeadStatus[] = [
   LeadStatus.NEW,
   LeadStatus.CONTACTED,
   LeadStatus.QUALIFIED,
   LeadStatus.VIEWING_SCHEDULED,
   LeadStatus.NEGOTIATION,
+  LeadStatus.WON,
   LeadStatus.LOST,
 ];
 

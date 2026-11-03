@@ -36,8 +36,7 @@ export function leadWhere(actor: Actor, q: string | undefined, f: LeadFilters): 
     AND: [
       scope.leads(actor),
       q ? { OR: [{ fullName: like(q) }, { email: like(q) }, { interestedArea: like(q) }, ...(digits.length >= 4 ? [{ phone: like(digits.slice(-4)) }] : [])] } : {},
-      // Booked leads live on the Pending contracts page, not in the leads pipeline.
-      f.status ? { status: f.status } : { status: { not: "WON" } },
+      f.status ? { status: f.status } : {},
       f.source ? { source: f.source } : {},
       f.priority ? { priority: f.priority } : {},
       f.purpose ? { purpose: f.purpose } : {},
@@ -238,7 +237,7 @@ export async function missingWonDocuments(lead: { id: string; clientId: string |
 /** Rules every stage change goes through (board, menu, edit form, API). */
 async function assertStageChange(lead: { id: string; status: LeadStatus }, to: LeadStatus) {
   if (lead.status === to) return;
-  if (to === "WON") throw invalid("Use “Send to pending contracts” to attach the booking form and the proof of payment.", { gate: ["won"] });
+  if (to === "WON") throw invalid("Use “Mark as won” to attach the booking form and the proof of payment.", { gate: ["won"] });
   if (to === "LOST") throw invalid("Use “Mark as lost” and write the reason.", { gate: ["lost"] });
   if (lead.status === "WON") {
     const deal = await db.deal.findFirst({ where: { leadId: lead.id, status: { in: ["PENDING_CONTRACT", "CLOSED"] } }, select: { reference: true } });
@@ -365,11 +364,11 @@ export async function removeLeadInterest(actor: Actor, leadId: string, propertyI
  */
 export async function markLeadWon(actor: Actor, input: z.output<typeof markWonSchema>) {
   const lead = await scopedLead(actor, input.id);
-  if (lead.status === "WON") throw conflict("This lead is already on the Pending contracts page.");
+  if (lead.status === "WON") throw conflict("This lead is already won.");
   await assertViewingPassed(lead);
   const missing = await missingWonDocuments(lead);
   if (missing.length) {
-    throw invalid(`Attach the ${missing.map((k) => DOCUMENT_KIND_META[k].label.toLowerCase()).join(" and the ")} before sending the lead to pending contracts.`, { documents: [...missing] });
+    throw invalid(`Attach the ${missing.map((k) => DOCUMENT_KIND_META[k].label.toLowerCase()).join(" and the ")} before marking the lead as won.`, { documents: [...missing] });
   }
   await assertCanAccess(actor, "property", input.propertyId);
   const property = await db.property.findUniqueOrThrow({ where: { id: input.propertyId }, select: { status: true, reference: true } });
@@ -393,7 +392,7 @@ export async function markLeadWon(actor: Actor, input: z.output<typeof markWonSc
     await onLeadStatusChanged(tx, updated, lead.status, "WON", { id: actor.id, staff: isStaff(actor) });
     await logActivity(tx, {
       action: "STATUS_CHANGED", entityType: "LEAD", entityId: lead.id, entityLabel: lead.fullName, userId: actor.id, leadId: lead.id, clientId: lead.clientId, propertyId: input.propertyId,
-      description: `Moved ${lead.fullName} from ${LEAD_STATUS_META[lead.status].label} to Pending contracts — booked ${property.reference}`, meta: { from: lead.status, to: "WON" },
+      description: `Moved ${lead.fullName} from ${LEAD_STATUS_META[lead.status].label} to Won — booked ${property.reference}`, meta: { from: lead.status, to: "WON" },
     });
     const deal = await openDealInTx(tx, actor, { leadId: lead.id, clientId: lead.clientId, propertyId: input.propertyId, agentId: lead.agentId, amount: input.amount, notes: input.notes });
     // The booking paperwork travels with the deal.
