@@ -103,7 +103,7 @@ export default async function DashboardPage() {
           label="Lead conversion"
           value={formatPercent(stats.leads.conversionRate, 1)}
           icon={Percent}
-          href="/leads?view=table&status=WON"
+          href="/deals"
           hint={`${stats.leads.won} won of ${stats.leads.total} leads · ${stats.leads.lost} lost`}
         />
       </div>

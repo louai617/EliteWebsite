@@ -118,7 +118,10 @@ async function main() {
   check("agent lead auto-assigned", lead.agentId === omar.id);
   check("interest created", Boolean(await db.propertyInterest.findFirst({ where: { leadId: lead.id, propertyId: created.id } })));
   const aishaLeads = await listLeads(aisha, { ...page, sort: "createdAt" }, {});
-  check("agent only sees own leads", aishaLeads.items.every((l) => l.agentId === aisha.id) && aishaLeads.total === (await db.lead.count({ where: { agentId: aisha.id } })));
+  check("agent only sees own leads", aishaLeads.items.every((l) => l.agentId === aisha.id) && aishaLeads.total === (await db.lead.count({ where: { agentId: aisha.id, status: { not: "WON" } } })));
+  const booked = await db.lead.count({ where: { status: "WON" } });
+  check("booked leads (pending contract) leave the leads list", (await listLeads(admin, { ...page, sort: "createdAt", pageSize: 100 }, {})).items.every((l) => l.status !== "WON"));
+  check("…but can still be listed with the status filter", (await listLeads(admin, { ...page, sort: "createdAt", pageSize: 100 }, { status: "WON" })).total === booked);
   check("agent can't open another agent's lead", (await getLead(aisha, lead.id)) === null);
   await rejects("agent can't move another agent's lead", () => setLeadStatus(aisha, lead.id, "WON"), /not found/i);
   await rejects("agent can't reassign lead", () => assignLead(omar, lead.id, aisha.id), /managers/);

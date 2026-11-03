@@ -36,7 +36,8 @@ export function leadWhere(actor: Actor, q: string | undefined, f: LeadFilters): 
     AND: [
       scope.leads(actor),
       q ? { OR: [{ fullName: like(q) }, { email: like(q) }, { interestedArea: like(q) }, ...(digits.length >= 4 ? [{ phone: like(digits.slice(-4)) }] : [])] } : {},
-      f.status ? { status: f.status } : {},
+      // Won leads leave the Leads page: their deal is followed on the Pending contracts page.
+      f.status ? { status: f.status } : { status: { not: "WON" } },
       f.source ? { source: f.source } : {},
       f.priority ? { priority: f.priority } : {},
       f.purpose ? { purpose: f.purpose } : {},
