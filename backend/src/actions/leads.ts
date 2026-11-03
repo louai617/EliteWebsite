@@ -1,0 +1,44 @@
+"use server";
+
+import { authedAction } from "@/lib/action";
+import { idOnly } from "@/schemas/common";
+import { bulkReassignSchema, convertLeadSchema, leadAssignSchema, leadInterestSchema, leadSchema, leadStatusSchema, markLostSchema, markWonSchema, passDecisionSchema, passRequestSchema, updateLeadSchema } from "@/schemas/lead";
+import {
+  addLeadInterest,
+  assignLead,
+  bulkReassignLeads,
+  convertLeadToClient,
+  decideViewingPass,
+  markLeadLost,
+  markLeadWon,
+  requestViewingPass,
+  createLead,
+  deleteLead,
+  removeLeadInterest,
+  setLeadStatus,
+  updateLead,
+} from "@/services/leads";
+
+export const createLeadAction = authedAction(leadSchema, (input, user) => createLead(user, input), { message: "Lead created" });
+export const updateLeadAction = authedAction(updateLeadSchema, (input, user) => updateLead(user, input), { message: "Lead updated" });
+export const setLeadStatusAction = authedAction(leadStatusSchema, (input, user) => setLeadStatus(user, input.id, input.status), { message: "Lead moved" });
+export const assignLeadAction = authedAction(leadAssignSchema, (input, user) => assignLead(user, input.id, input.agentId), { message: "Lead assigned" });
+export const deleteLeadAction = authedAction(idOnly, (input, user) => deleteLead(user, input.id), { message: "Lead deleted" });
+export const convertLeadAction = authedAction(convertLeadSchema, (input, user) => convertLeadToClient(user, input.id), {
+  message: (r) => ((r as { created: boolean }).created ? "Client profile created" : "Lead is already linked to a client"),
+});
+export const addLeadInterestAction = authedAction(leadInterestSchema, (input, user) => addLeadInterest(user, input.leadId, input.propertyId), { message: "Property added" });
+export const removeLeadInterestAction = authedAction(leadInterestSchema, (input, user) => removeLeadInterest(user, input.leadId, input.propertyId), { message: "Property removed" });
+export const markLeadWonAction = authedAction(markWonSchema, (input, user) => markLeadWon(user, input), {
+  message: (r) => `Lead won — deal ${(r as { reference: string }).reference} opened (pending contract)`,
+});
+export const markLeadLostAction = authedAction(markLostSchema, (input, user) => markLeadLost(user, input), { message: "Lead marked as lost" });
+export const requestViewingPassAction = authedAction(passRequestSchema, (input, user) => requestViewingPass(user, input), {
+  message: (r) => ((r as { status: string }).status === "APPROVED" ? "Viewing step passed" : "Pass requested — a manager will review it"),
+});
+export const decideViewingPassAction = authedAction(passDecisionSchema, (input, user) => decideViewingPass(user, input), {
+  message: (r) => ((r as { status: string }).status === "APPROVED" ? "Pass approved" : "Pass rejected"),
+});
+export const bulkReassignLeadsAction = authedAction(bulkReassignSchema, (input, user) => bulkReassignLeads(user, input), {
+  message: (r) => `${(r as { moved: number }).moved} lead${(r as { moved: number }).moved === 1 ? "" : "s"} reassigned`,
+});

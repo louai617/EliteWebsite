@@ -3,7 +3,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import { useTranslations } from 'next-intl';
 import { TrendingUp } from 'lucide-react';
-import type { PricePoint } from '@/data/properties';
+import type { PricePoint } from '@/lib/listing-types';
 
 interface PriceTrendsChartProps {
   history: PricePoint[];

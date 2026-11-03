@@ -1,36 +1,77 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# ELITE Real Estate — website
 
-## Getting Started
-
-First, run the development server:
+Next.js 16 (App Router) · next-intl (English / Arabic) · Tailwind CSS · React Hook Form + Zod.
+Runs on **http://localhost:3001** and talks to the CRM backend's REST API
+(`backend/`, http://localhost:3002/api — in production the agent app at
+https://app.eliterealestate.qa). This app never touches the database. Its only secret,
+`REVALIDATE_SECRET`, is server-side.
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
+cp .env.example .env.local     # NEXT_PUBLIC_API_URL=http://localhost:3002/api …
+npm run dev                    # http://localhost:3001  (start the backend first)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:3002/api` | Backend REST API |
+| `NEXT_PUBLIC_CRM_URL` | API origin | Agent app; the **Agent portal** button opens its `/login` |
+| `NEXT_PUBLIC_SITE_URL` | `http://localhost:3001` | Canonical URL for SEO metadata |
+| `NEXT_PUBLIC_BUSINESS_TIMEZONE` | `Asia/Qatar` | Time zone for viewing times and payment deadlines |
+| `REVALIDATE_SECRET` | — | Server-only. Same value as the agent app's `WEBSITE_REVALIDATE_SECRET`; lets it refresh listings instantly |
+| `API_INTERNAL_URL` | `NEXT_PUBLIC_API_URL` | Server-only. Where the server fetches listings from (e.g. an internal address) |
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## How it connects
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The website has **no visitor accounts** (no sign-up, login or client dashboard). The
+**Agent portal** button in the header opens the agent app's sign-in page, where agents and staff
+use their CRM accounts.
 
-## Learn More
+- `src/lib/api.ts` — the single API client for the public endpoints: `fetch` without cookies
+  (`credentials: "omit"`), typed responses (`src/lib/api-types.ts`) and an `ApiError` carrying
+  the backend's message and field errors.
+- Website forms (property enquiry, chat assistant) post to `POST /public/leads`, which
+  creates a lead and a response task in the CRM.
+- Old links redirect (`src/proxy.ts`): `/login` and `/forgot-password` → the agent app,
+  `/dashboard/saved` → `/saved`, `/register` and `/dashboard/*` → the home page.
 
-To learn more about Next.js, take a look at the following resources:
+## Listings come from the agent app
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- `src/lib/listings.ts` (server) fetches `GET /public/properties` and
+  `GET /public/properties/:ref`, cached with the `listings` tag for 60 s. Home, `/properties`
+  (filters, sorting and pages in the URL) and `/properties/[ref]` render from it; there is no
+  static listing data in this app any more.
+- Photos are served through `next/image` (AVIF, then WebP, sized per screen; optimized copies
+  cached for a day) with the blurred previews from the agent app (`cover_blur`,
+  `image_blurs`) as placeholders while they load. In production the agent app must be on a
+  public address (Next refuses to optimize images from private IPs such as `localhost`).
+- Listing photos arrive already watermarked (the clean originals never leave the agent app) and
+  are never resized above 1920 px (`images.deviceSizes`). Cards, the gallery and the lightbox
+  turn off right-click, dragging and the iPhone long-press menu (`lib/protect-photo.ts`,
+  `.protected-photo` in `globals.css`). That stops casual saving only — screenshots and the
+  network tab can't be blocked by any website; the watermark is the real protection.
+- `POST /api/revalidate` (Bearer `REVALIDATE_SECRET`, constant-time compare) is called by the
+  agent app whenever a property changes and expires the `listings` tag immediately.
+- A single listing is cached as a value (`unstable_cache`), not as a fetch response: Next only
+  caches 200 responses, so a sold, unpublished or deleted listing would otherwise keep showing
+  when that call is missed. This way "not found" is cached too and the page goes within a minute.
+- If the agent app is unreachable the pages show a friendly error/empty state instead of
+  crashing, and recover on the next request.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Booking, reserving and saving — no account needed
 
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+- **Book a viewing** (`BookViewing` on every property page) — pick a free 45-minute slot (the
+  agent's calendar is checked) and leave name, mobile and e-mail. `POST /public/viewings`
+  creates a viewing on a WEBSITE lead for the listing's agent with a "confirm" task; the
+  visitor gets an e-mail now and another when the agent confirms, plus an `.ics` file and
+  directions on screen.
+- **Reserve this home** (`ReserveHome`) — deposit, Fawran / bank transfer (card shown as
+  "coming soon") and the visitor's details. `POST /public/reservations` returns a private link
+  token; the visitor is taken to **`/[locale]/reservation/[token]`** (also e-mailed), which
+  shows the status, bank details with copy buttons, the payer details and the **receipt upload**,
+  and lets them cancel before paying. The page is `noindex` and sends no referrer, so the link
+  isn't leaked. Agents confirm the payment in the CRM's Reservations page.
+- **Saved homes** — the ♥ on cards and property pages stores the listing in the visitor's own
+  browser (`src/lib/saved-homes.ts`, localStorage, synced across tabs). **`/[locale]/saved`**
+  lists them (via `GET /public/properties?refs=…`), flags homes no longer available and compares
+  up to 3 side by side. Nothing is sent to the server.

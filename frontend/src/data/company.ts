@@ -165,6 +165,8 @@ export const company = {
     phones: ['+974 3000 4996', '+974 7007 9906', '+974 4004 4510'],
     /** Digits only, for tel: and wa.me links. */
     phonesRaw: ['97430004996', '97470079906', '97440044510'],
+    /** Support line: the floating WhatsApp button, the contact page, and listings with no agent number. */
+    support: { phone: '+974 5100 1238', raw: '97451001238' },
     address: {
       en: 'Office 305, 3rd Floor, Block D, Al Mirqab Mall, Doha – Qatar',
       ar: 'مكتب 305، الطابق الثالث، بلوك D، مول المرقاب، الدوحة – قطر',
