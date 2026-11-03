@@ -16,6 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuLabel, DropdownMenuRadioGroup, DropdownMenuRadioItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { UserAvatar } from "@/components/shared/user-avatar";
+import { BookedBadge } from "@/components/leads/booked-badge";
 
 export interface BoardColumn {
   status: LeadStatus;
@@ -56,7 +57,7 @@ function LeadCard({ lead, onMove, dragging, onDragStart, onDragEnd }: { lead: Le
         onDragStart();
       }}
       onDragEnd={onDragEnd}
-      className={cn("group rounded-md border bg-card p-3 shadow-[0_1px_2px_rgba(20,16,10,0.05)] transition-shadow hover:shadow-md", dragging && "opacity-40")}
+      className={cn("group rounded-md border bg-card p-3 shadow-[0_1px_2px_rgba(20,16,10,0.05)] transition-shadow hover:shadow-md", lead.viewings.length > 0 && "border-l-[3px] border-l-emerald-500", dragging && "opacity-40")}
     >
       <div className="flex items-start gap-1.5">
         <GripVertical className="mt-0.5 -ml-1 size-3.5 shrink-0 cursor-grab text-muted-foreground/40 group-hover:text-muted-foreground" aria-hidden />
@@ -89,6 +90,7 @@ function LeadCard({ lead, onMove, dragging, onDragStart, onDragEnd }: { lead: Le
         </DropdownMenu>
       </div>
       <div className="mt-2.5 flex flex-wrap items-center gap-1.5">
+        <BookedBadge booking={lead.viewings[0]} />
         {(lead.priority === "HIGH" || lead.priority === "URGENT") && <Badge tone={priority.tone}>{priority.label}</Badge>}
         <Badge tone="neutral">{LEAD_SOURCE_META[lead.source].label}</Badge>
         {lead.budgetMax != null && <span className="tabular text-xs text-muted-foreground">≤ {formatMoney(lead.budgetMax)}</span>}

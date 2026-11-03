@@ -70,6 +70,8 @@ export const leadListSelect = {
   agentId: true,
   agent: { select: { id: true, name: true, avatarUrl: true } },
   _count: { select: { viewings: true, tasks: true } },
+  /** The latest viewing the client booked themselves on the website (shows the "Booked viewing" mark). */
+  viewings: { where: { bookedByClient: true, status: { not: "CANCELLED" } }, orderBy: { startsAt: "desc" }, take: 1, select: { startsAt: true, status: true } },
 } satisfies Prisma.LeadSelect;
 
 export type LeadListItem = Prisma.LeadGetPayload<{ select: typeof leadListSelect }>;
@@ -126,7 +128,7 @@ export async function getLead(actor: Actor, id: string) {
       },
       viewings: {
         orderBy: { startsAt: "desc" },
-        select: { id: true, startsAt: true, endsAt: true, status: true, property: { select: { id: true, reference: true, title: true } }, agent: { select: { name: true } } },
+        select: { id: true, startsAt: true, endsAt: true, status: true, bookedByClient: true, clientNote: true, property: { select: { id: true, reference: true, title: true } }, agent: { select: { name: true } } },
       },
       deals: {
         orderBy: { createdAt: "desc" },

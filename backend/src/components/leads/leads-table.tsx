@@ -9,6 +9,7 @@ import { DataTable, type Column } from "@/components/shared/data-table/data-tabl
 import { EmptyState } from "@/components/shared/empty-state";
 import { EnumBadge } from "@/components/shared/enum-badge";
 import { AgentCell } from "@/components/shared/user-avatar";
+import { BookedBadge } from "@/components/leads/booked-badge";
 
 function budget(l: LeadListItem) {
   if (l.budgetMin == null && l.budgetMax == null) return "—";
@@ -28,6 +29,7 @@ export function LeadsTable({ rows, filtered }: { rows: LeadListItem[]; filtered:
             {l.fullName}
           </Link>
           <p className="text-xs text-muted-foreground">{l.phone}</p>
+          <BookedBadge booking={l.viewings[0]} className="mt-1" />
         </div>
       ),
     },

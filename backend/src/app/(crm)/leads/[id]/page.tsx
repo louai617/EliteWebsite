@@ -17,6 +17,7 @@ import { addLeadInterestAction, removeLeadInterestAction } from "@/actions/leads
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { PageHeader } from "@/components/shared/page-header";
 import { EnumBadge } from "@/components/shared/enum-badge";
+import { BookedBadge } from "@/components/leads/booked-badge";
 import { InfoList } from "@/components/shared/info-list";
 import { NotesPanel } from "@/components/shared/notes-panel";
 import { ActivityTimeline } from "@/components/shared/activity-timeline";
@@ -78,6 +79,7 @@ export default async function LeadPage({ params }: PageProps<"/leads/[id]">) {
           <span className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
             <EnumBadge meta={LEAD_STATUS_META} value={lead.status} dot />
             <EnumBadge meta={PRIORITY_META} value={lead.priority} />
+            <BookedBadge booking={lead.viewings.find((v) => v.bookedByClient && v.status !== "CANCELLED")} />
             <span>{LEAD_SOURCE_META[lead.source].label}</span>
             <span>Created <RelativeTime date={lead.createdAt} /></span>
             <span className="flex items-center gap-1.5">

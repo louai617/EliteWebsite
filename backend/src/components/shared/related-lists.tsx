@@ -10,7 +10,7 @@ import { EnumBadge } from "./enum-badge";
 export function ViewingMiniList({
   viewings,
 }: {
-  viewings: { id: string; startsAt: Date; status: ViewingStatus; property: { id: string; reference: string; title: string }; agent: { name: string } | null }[];
+  viewings: { id: string; startsAt: Date; status: ViewingStatus; bookedByClient?: boolean; clientNote?: string | null; property: { id: string; reference: string; title: string }; agent: { name: string } | null }[];
 }) {
   if (!viewings.length) return <EmptyState compact icon={CalendarClock} title="No viewings yet" />;
   return (
@@ -27,7 +27,11 @@ export function ViewingMiniList({
               <Link href={`/properties/${v.property.id}`} className="line-clamp-1 text-sm hover:underline">
                 {v.property.reference} · {v.property.title}
               </Link>
-              <p className="text-xs text-muted-foreground">{v.agent?.name ?? "No agent"}</p>
+              <p className="text-xs text-muted-foreground">
+                {v.agent?.name ?? "No agent"}
+                {v.bookedByClient && <span className="ml-1.5 font-medium text-emerald-700">· Booked by the client on the website</span>}
+              </p>
+              {v.clientNote && <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground italic">“{v.clientNote}”</p>}
             </div>
             <EnumBadge meta={VIEWING_STATUS_META} value={v.status} />
           </li>

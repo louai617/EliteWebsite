@@ -17,6 +17,7 @@ import { bookGuestViewing, bookingSlots } from "@/services/guest-bookings";
 import { addAvailability, availabilityBetween, removeAvailability } from "@/services/availability";
 import { availabilitySchema } from "@/schemas/availability";
 import { createPublicLead } from "@/services/website-leads";
+import { listLeads } from "@/services/leads";
 import { testMailbox } from "@/services/mail";
 import { isSelfOrigin, requestOrigin } from "@/lib/cors";
 import type { Role } from "@/generated/prisma/enums";
@@ -149,6 +150,10 @@ async function main() {
   check("no CRM client is created for a visitor", viewing.clientId == null);
   check("exactly one new lead", (await db.lead.count()) === leadsBefore + 1);
   check("lead stays New until the agent calls (24-hour rule applies)", viewing.lead?.status === "NEW");
+  const listed = (await listLeads(omar, { page: 1, pageSize: 50, q: "Web Visitor A", sort: "createdAt", dir: "desc" }, {})).items[0];
+  check("the lead is marked as having booked a viewing", listed?.viewings.length === 1 && new Date(listed.viewings[0].startsAt).getTime() === at10.getTime());
+  const plain = (await listLeads(omar, { page: 1, pageSize: 50, sort: "createdAt", dir: "desc" }, {})).items.find((l) => l.source !== "WEBSITE");
+  check("leads that didn't book online have no mark", !plain || plain.viewings.length === 0);
   const confirmTask = await db.task.findFirst({ where: { viewingId: viewing.id, autoKey: { startsWith: "confirm-booking:" } } });
   check("agent gets a 'confirm website booking' task", confirmTask?.assigneeId === omar.id && confirmTask.status !== "COMPLETED" && confirmTask.leadId === viewing.leadId);
   await new Promise((r) => setTimeout(r, 50));
