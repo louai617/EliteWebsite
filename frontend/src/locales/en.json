@@ -287,10 +287,8 @@
     "booking": "Booking…",
     "success_title": "Viewing requested",
     "success_body": "We've sent your request to {agent}. They'll call you to confirm, and we've e-mailed you the details.",
-    "add_calendar": "Add to calendar",
     "close": "Close",
-    "error": "Something went wrong. Please try again.",
-    "directions": "Directions"
+    "error": "Something went wrong. Please try again."
   },
   "reserve": {
     "reserve": "Reserve this home",
