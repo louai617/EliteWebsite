@@ -14,6 +14,8 @@ import { Button } from "@/components/ui/button";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { EnumBadge } from "@/components/shared/enum-badge";
 import { ViewingActions } from "./viewing-actions";
+import { AvailabilityChip } from "./availability";
+import type { AvailabilityBlock } from "@/services/availability";
 
 const STATUS_DOT: Record<string, string> = {
   SCHEDULED: "bg-sky-500",
@@ -79,7 +81,7 @@ function ViewingChip({ v, agents, viewer }: { v: ViewingItem; agents: AgentOptio
   );
 }
 
-export function ViewingsCalendar({ month, viewings, agents, viewer }: { month: Date; viewings: ViewingItem[]; agents: AgentOption[]; viewer: Viewer }) {
+export function ViewingsCalendar({ month, viewings, free, agents, viewer }: { month: Date; viewings: ViewingItem[]; free: AvailabilityBlock[]; agents: AgentOption[]; viewer: Viewer }) {
   const url = useUrlState();
   // All calendar maths happens in Doha time so the grid matches the server's data window.
   const inTz = { in: tz(APP_TIMEZONE) };
@@ -90,7 +92,12 @@ export function ViewingsCalendar({ month, viewings, agents, viewer }: { month: D
   return (
     <div className="overflow-hidden rounded-lg border bg-card">
       <div className="flex items-center justify-between border-b px-4 py-2.5">
-        <h2 className="text-sm font-semibold">{format(month, "MMMM yyyy", inTz)}</h2>
+        <div className="flex items-center gap-3">
+          <h2 className="text-sm font-semibold">{format(month, "MMMM yyyy", inTz)}</h2>
+          <span className="hidden items-center gap-1 text-[11px] text-muted-foreground sm:flex">
+            <span className="size-2 rounded-sm bg-emerald-200" aria-hidden /> Free for viewings (bookable on the website)
+          </span>
+        </div>
         <div className="flex items-center gap-1">
           <Button variant="outline" size="xs" onClick={() => url.set({ month: undefined }, { resetPage: false })}>
             Today
@@ -112,6 +119,7 @@ export function ViewingsCalendar({ month, viewings, agents, viewer }: { month: D
           ))}
           {days.map((day) => {
             const items = viewings.filter((v) => isSameDay(v.startsAt, day, inTz));
+            const blocks = free.filter((b) => isSameDay(b.startsAt, day, inTz));
             const inMonth = isSameMonth(day, month, inTz);
             return (
               <div key={day.toISOString()} className={cn("min-h-28 border-r border-b p-1.5 [&:nth-child(7n)]:border-r-0", !inMonth && "bg-muted/30")}>
@@ -119,6 +127,10 @@ export function ViewingsCalendar({ month, viewings, agents, viewer }: { month: D
                   {format(day, "d", inTz)}
                 </p>
                 <div className="space-y-0.5">
+                  {blocks.slice(0, 3).map((b) => (
+                    <AvailabilityChip key={b.id} block={b} viewer={viewer} showAgent={viewer.isManager} />
+                  ))}
+                  {blocks.length > 3 && <p className="px-1 text-[11px] text-emerald-700">+{blocks.length - 3} free</p>}
                   {items.slice(0, 4).map((v) => (
                     <ViewingChip key={v.id} v={v} agents={agents} viewer={viewer} />
                   ))}

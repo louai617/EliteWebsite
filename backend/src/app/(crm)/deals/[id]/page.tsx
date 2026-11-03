@@ -33,7 +33,7 @@ import { ContractsPanel } from "@/components/contracts/contracts-panel";
 export const metadata: Metadata = { title: "Deal" };
 
 const STEPS: { status: DealStatus; label: string }[] = [
-  { status: "PENDING_CONTRACT", label: "Won · pending contract" },
+  { status: "PENDING_CONTRACT", label: "Pending contract" },
   { status: "CLOSED", label: "Closed · client" },
 ];
 
@@ -91,7 +91,7 @@ export default async function DealPage({ params }: PageProps<"/deals/[id]">) {
   return (
     <>
       <PageHeader
-        breadcrumbs={[{ label: "Deals", href: "/deals" }, { label: deal.reference }]}
+        breadcrumbs={[{ label: "Pending contracts", href: "/deals" }, { label: deal.reference }]}
         title={
           <span className="flex items-center gap-2">
             <span className="font-mono">{deal.reference}</span>

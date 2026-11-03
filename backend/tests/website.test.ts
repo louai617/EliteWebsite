@@ -14,6 +14,8 @@ import { createProperty, getPropertyForEdit, setPropertyStatus, updateProperty }
 import { setViewingStatus } from "@/services/viewings";
 import { getPublicListing, listPublicListings, PUBLIC_STATUSES } from "@/services/public-listings";
 import { bookGuestViewing, bookingSlots } from "@/services/guest-bookings";
+import { addAvailability, availabilityBetween, removeAvailability } from "@/services/availability";
+import { availabilitySchema } from "@/schemas/availability";
 import { createPublicLead } from "@/services/website-leads";
 import { testMailbox } from "@/services/mail";
 import { isSelfOrigin, requestOrigin } from "@/lib/cors";
@@ -105,8 +107,30 @@ async function main() {
       await db.property.update({ where: { id: hidden.id }, data: { websitePublished: true } });
     }
   }, /not found/i);
+  // ── Free for viewings: only the agent's marked hours are offered ──
+  const none = await bookingSlots(hidden.reference, day);
+  check("no free time marked → nothing to book", none.slots.length === 0 && none.freeDays.length === 0);
+  const free = (over: Record<string, unknown> = {}) => availabilitySchema.parse({ date: day, from: "09:00", to: "20:00", repeatWeeks: 0, ...over });
+  const aisha = await actorFor("aisha@elite.qa");
+  const fatima = await actorFor("fatima@elite.qa");
+  await rejects("agents can't set another agent's free time", () => addAvailability(aisha, free({ agentId: omar.id })), /own free time/i);
+  await rejects("past days are refused", () => addAvailability(omar, free({ date: shiftDate(businessDate(), -1) })), /later day/i);
+  await rejects("blocks shorter than a viewing are refused", () => addAvailability(omar, free({ from: "10:00", to: "10:30" })), /at least 45/i);
+  check("schema: the end must be after the start", !availabilitySchema.safeParse({ date: day, from: "12:00", to: "11:00" }).success);
+  const morning = await addAvailability(fatima, free({ agentId: omar.id, from: "16:00", to: "18:00" }));
+  check("managers can mark an agent free", morning.added === 1);
+  const repeated = await addAvailability(omar, free({ from: "09:00", to: "20:00", repeatWeeks: 2 }));
+  check("repeating adds the same hours on the next weeks, skipping a day that already has free time", repeated.added === 2 && repeated.skipped === 1, repeated);
+  const blocksThatDay = await availabilityBetween(omar, atLocalHour(day, 0), atLocalHour(shiftDate(day, 1), 0));
+  check("the day keeps the block that was there first", blocksThatDay.length === 1 && blocksThatDay[0].agentId === omar.id && blocksThatDay[0].startsAt.getTime() === atLocalHour(day, 16).getTime(), blocksThatDay.length);
+  check("agents only see their own blocks", (await availabilityBetween(aisha, atLocalHour(day, 0), atLocalHour(shiftDate(day, 1), 0))).length === 0);
+  await removeAvailability(omar, blocksThatDay[0].id);
+  await addAvailability(omar, free({ from: "09:00", to: "12:00" }));
+  await addAvailability(omar, free({ from: "15:00", to: "20:00" }));
   const slots = await bookingSlots(hidden.reference, day);
-  check("slots run 09:00 to 19:15 on a weekday", slots.slots[0]?.label === "09:00" && slots.slots.at(-1)?.label === "19:00", slots.slots.map((s) => s.label));
+  const labels = slots.slots.map((s) => s.label);
+  check("only times inside the free hours are offered", labels[0] === "09:00" && labels.includes("11:00") && !labels.includes("11:30") && !labels.includes("13:00") && labels.includes("15:00") && labels.at(-1) === "19:00", labels);
+  check("days with free time are listed for the website", slots.freeDays.includes(day) && slots.freeDays.includes(shiftDate(day, 7)), slots.freeDays);
   check("past days have no slots", (await bookingSlots(hidden.reference, shiftDate(businessDate(), -1))).slots.length === 0);
   check("slots never expose who booked", !/name|phone|email|lead|client/i.test(JSON.stringify(slots.slots[0])));
 
@@ -136,6 +160,7 @@ async function main() {
   await rejects("same phone can't book the same home twice", () => bookGuestViewing(guest({ startsAt: atLocalHour(day, 15).toISOString(), phone: "0097450004444" })), /already booked/i);
   check("the repeat attempt reused the visitor's lead (no duplicate lead)", (await db.lead.count()) === leadsBefore + 1);
   await rejects("another visitor can't take the agent's slot", () => bookGuestViewing(guest({ name: "Web Visitor B", phone: "+974 5000 5555", email: "web.b@example.com" })), /just taken/i);
+  await rejects("times outside the free hours are rejected", () => bookGuestViewing(guest({ startsAt: atLocalHour(day, 13).toISOString(), phone: "+974 5000 5555" })), /available times/i);
   await rejects("off-grid times are rejected", () => bookGuestViewing(guest({ startsAt: atLocalHour(day, 10, 10).toISOString(), phone: "+974 5000 5555" })), /available times/i);
   await rejects("too-soon times are rejected", () => bookGuestViewing(guest({ startsAt: atLocalHour(businessDate(), 9).toISOString(), phone: "+974 5000 5555" })), /available times|2 hours/i);
   await rejects("bookings more than 30 days ahead are rejected", () => bookGuestViewing(guest({ startsAt: atLocalHour(weekdayAhead(40), 10).toISOString(), phone: "+974 5000 5555" })), /30 days/i);

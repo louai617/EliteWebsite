@@ -19,24 +19,38 @@ function nextDays(n: number) {
   return Array.from({ length: n }, (_, i) => fmt.format(new Date(Date.now() + i * 86_400_000)));
 }
 
-/** Day chips + free time slots for a listing (the agent's calendar is checked server-side). */
+/**
+ * Day chips + free time slots for a listing. Only times inside the agent's "free for viewings"
+ * hours are offered (checked server-side); days without any are greyed out.
+ */
 export default function SlotPicker({ reference, value, onChange, reloadKey = 0 }: { reference: string; value: string | null; onChange: (slot: string | null) => void; reloadKey?: number }) {
   const t = useTranslations('booking');
   const locale = useLocale();
   const days = useMemo(() => nextDays(14), []);
   const [day, setDay] = useState(days[0]);
   const [result, setResult] = useState<{ key: string; slots: Slot[] | null; error: string | null }>({ key: '', slots: null, error: null });
+  /** Days (YYYY-MM-DD) the agent has free time on; null until the first answer. */
+  const [freeDays, setFreeDays] = useState<string[] | null>(null);
   const key = `${day}#${reloadKey}`;
 
   useEffect(() => {
     const controller = new AbortController();
     api
-      .get<{ slots: Slot[] }>(`/public/viewings/slots?property=${encodeURIComponent(reference)}&date=${day}`, controller.signal)
-      .then((r) => setResult({ key, slots: r.slots, error: null }))
+      .get<{ slots: Slot[]; freeDays?: string[] }>(`/public/viewings/slots?property=${encodeURIComponent(reference)}&date=${day}`, controller.signal)
+      .then((r) => {
+        setResult({ key, slots: r.slots, error: null });
+        if (r.freeDays) {
+          setFreeDays(r.freeDays);
+          // First answer: jump to the first day the agent is free.
+          const first = r.freeDays.find((d) => days.includes(d));
+          if (freeDays === null && first && first !== day && !r.slots.some((s) => s.available)) setDay(first);
+        }
+      })
       .catch((err) => {
         if (!controller.signal.aborted) setResult({ key, slots: [], error: errorMessage(err, t('error')) });
       });
     return () => controller.abort();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- freeDays only matters for the first answer
   }, [reference, day, key, t]);
 
   const loading = result.key !== key;
@@ -53,16 +67,18 @@ export default function SlotPicker({ reference, value, onChange, reloadKey = 0 }
       <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-2">
         {days.map((d) => {
           const l = dayLabel(d);
+          const closed = freeDays !== null && !freeDays.includes(d);
           return (
             <button
               key={d}
               type="button"
+              disabled={closed}
               onClick={() => {
                 setDay(d);
                 onChange(null);
               }}
               aria-pressed={day === d}
-              className={`flex min-w-[68px] flex-col items-center rounded-xl border px-2 py-2 text-xs transition ${day === d ? 'border-primary bg-primary text-white' : 'border-gray-200 text-gray-600 hover:border-primary'}`}
+              className={`flex min-w-[68px] flex-col items-center rounded-xl border px-2 py-2 text-xs transition disabled:cursor-not-allowed disabled:border-gray-100 disabled:text-gray-300 ${day === d ? 'border-primary bg-primary text-white' : 'border-gray-200 text-gray-600 enabled:hover:border-primary'}`}
             >
               <span className="font-semibold">{l.weekday}</span>
               <span>{l.day}</span>
@@ -78,6 +94,8 @@ export default function SlotPicker({ reference, value, onChange, reloadKey = 0 }
         </p>
       ) : result.error ? (
         <p className="rounded-xl bg-red-50 p-4 text-sm text-red-700" role="alert">{result.error}</p>
+      ) : freeDays !== null && !freeDays.some((d) => days.includes(d)) ? (
+        <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500">{t('no_free_days')}</p>
       ) : slots.filter((s) => s.available).length === 0 ? (
         <p className="rounded-xl bg-gray-50 p-4 text-sm text-gray-500">{t('no_slots')}</p>
       ) : (

@@ -34,7 +34,7 @@ export function BulkReassignButton({ agents }: { agents: AgentOption[] }) {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Reassign leads</DialogTitle>
-            <DialogDescription>Move every open lead (not Won or Lost) from one agent to another. Each lead&apos;s response task moves with it and the change is logged.</DialogDescription>
+            <DialogDescription>Move every open lead (not pending contract or Lost) from one agent to another. Each lead&apos;s response task moves with it and the change is logged.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-3">
             <div className="space-y-1.5">

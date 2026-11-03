@@ -117,7 +117,7 @@ function LeadForm({
               name="status"
               label="Status"
               required
-              description={lead ? "Won and Lost are set from the stage menu (they need paperwork or a reason)." : undefined}
+              description={lead ? "Pending contract and Lost are set from the stage menu (they need paperwork or a reason)." : undefined}
               options={options(LEAD_STATUS_META).filter((o) =>
                 lead ? (o.value !== "WON" && o.value !== "LOST") || o.value === lead.status : ["NEW", "CONTACTED", "QUALIFIED", "VIEWING_SCHEDULED"].includes(o.value),
               )}

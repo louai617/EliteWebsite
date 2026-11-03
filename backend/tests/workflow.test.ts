@@ -111,7 +111,7 @@ async function main() {
   check("assignment clock starts on create", Boolean((await db.lead.findUniqueOrThrow({ where: { id: lead.id } })).assignedAt));
   await setLeadStatus(omar, lead.id, "VIEWING_SCHEDULED");
   await rejects("can't pass the viewing stage without a form or pass", () => setLeadStatus(omar, lead.id, "NEGOTIATION"), /viewing form/i);
-  await rejects("Won only through “Mark as won”", () => setLeadStatus(omar, lead.id, "WON"), /Mark as won/);
+  await rejects("Pending contract only through “Send to pending contracts”", () => setLeadStatus(omar, lead.id, "WON"), /Send to pending contracts/);
   await rejects("Lost only through “Mark as lost”", () => setLeadStatus(omar, lead.id, "LOST"), /Mark as lost/);
   check("Lost needs a reason", !markLostSchema.safeParse({ id: lead.id, reason: "  " }).success);
 
@@ -197,7 +197,7 @@ async function main() {
   await requestViewingPass(manager, { leadId: lead3.id, reason: "Manager approved: repeat buyer, viewed last week." });
   for (const kind of ["BOOKING_FORM", "PROOF_OF_PAYMENT"] as const) created.push((await uploadDocument(omar, { target: "lead", targetId: lead3.id, kind, title: null, number: null, expiresAt: null, file: pdf() })).id);
   const won3 = await markLeadWon(omar, { id: lead3.id, propertyId: home2.id, amount: 2900000, notes: null });
-  await rejects("a booked property can't be booked again", () => markLeadWon(manager, { id: lead.id, propertyId: home2.id, amount: 1, notes: null }), /already won|already booked/i);
+  await rejects("a booked property can't be booked again", () => markLeadWon(manager, { id: lead.id, propertyId: home2.id, amount: 1, notes: null }), /already on the Pending contracts|already booked/i);
   await rejects("cancelling needs a reason", () => setDealStatus(manager, won3.dealId, "CANCELLED", null), /why/i);
   await setDealStatus(manager, won3.dealId, "CANCELLED", "Financing was refused");
   check("cancelled deal keeps its reason", (await db.deal.findUniqueOrThrow({ where: { id: won3.dealId } })).cancelReason === "Financing was refused");

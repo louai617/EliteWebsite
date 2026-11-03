@@ -14,6 +14,8 @@ import { ViewingsCalendar } from "@/components/viewings/viewings-calendar";
 import { ViewingsTable } from "@/components/viewings/viewings-table";
 import { ViewingsToolbar } from "@/components/viewings/viewings-toolbar";
 import { CreateViewingButton } from "@/components/viewings/create-viewing-button";
+import { AvailabilityButton } from "@/components/viewings/availability";
+import { availabilityBetween } from "@/services/availability";
 
 export const metadata: Metadata = { title: "Viewings" };
 
@@ -37,16 +39,18 @@ export default async function ViewingsPage({ searchParams }: PageProps<"/viewing
     status: enumParam(sp, "status", ViewingStatus),
     agentId: param(sp, "agent"),
   };
-  const header = <PageHeader title="Viewings" description="Property viewings across the team" actions={<CreateViewingButton agents={agents} viewer={viewer} openFromUrl />} />;
+  const header = <PageHeader title="Viewings" description="Property viewings across the team" actions={<><AvailabilityButton agents={agents} viewer={viewer} /><CreateViewingButton agents={agents} viewer={viewer} openFromUrl /></>} />;
 
   if (view === "calendar") {
     const month = parseMonth(param(sp, "month"));
-    const viewings = await viewingsBetween(user, startOfWeek(startOfMonth(month, inTz), inTz), endOfWeek(endOfMonth(month, inTz), inTz), filters);
+    const gridStart = startOfWeek(startOfMonth(month, inTz), inTz);
+    const gridEnd = endOfWeek(endOfMonth(month, inTz), inTz);
+    const [viewings, free] = await Promise.all([viewingsBetween(user, gridStart, gridEnd, filters), availabilityBetween(user, gridStart, gridEnd, filters.agentId)]);
     return (
       <>
         {header}
         <ViewingsToolbar agents={agents} viewer={viewer} view="calendar" />
-        <ViewingsCalendar month={month} viewings={viewings} agents={agents} viewer={viewer} />
+        <ViewingsCalendar month={month} viewings={viewings} free={free} agents={agents} viewer={viewer} />
       </>
     );
   }

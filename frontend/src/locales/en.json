@@ -279,6 +279,7 @@
     "choose_day": "Choose a day",
     "choose_time": "Choose a time",
     "no_slots": "No free times on this day. Try another day.",
+    "no_free_days": "The agent hasn't opened any viewing times in the next two weeks. Call or WhatsApp them to arrange one.",
     "loading": "Loading times…",
     "note_label": "Message for the agent (optional)",
     "note_placeholder": "e.g. I'll come with my family",

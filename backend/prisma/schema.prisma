@@ -354,6 +354,8 @@ model User {
   passDecisions        LeadPassRequest[]   @relation("PassDecider")
   poolLeadsAdded       PoolLead[]          @relation("PoolLeadCreator")
   payouts              AgentPayout[]       @relation("PayoutAgent")
+  viewingHours         ViewingAvailability[] @relation("AvailabilityAgent")
+  viewingHoursAdded    ViewingAvailability[] @relation("AvailabilityCreator")
   payoutsMade          AgentPayout[]       @relation("PayoutCreator")
   payoutsVoided        AgentPayout[]       @relation("PayoutVoider")
   poolLeadsTaken       PoolLead[]          @relation("PoolLeadTaker")
@@ -1320,6 +1322,26 @@ model PoolLead {
   @@index([status, createdAt])
   @@index([phoneDigits])
   @@index([batch])
+}
+
+// ───────────────────────────── Viewing availability ─────────────────────────────
+
+/**
+ * A block of time an agent is free for viewings ("Tuesday 16:00–19:00"). The website only
+ * offers visitors start times inside the listing agent's blocks (minus viewings already booked).
+ */
+model ViewingAvailability {
+  id          String   @id @default(cuid())
+  agentId     String
+  agent       User     @relation("AvailabilityAgent", fields: [agentId], references: [id], onDelete: Cascade)
+  startsAt    DateTime
+  endsAt      DateTime
+  createdById String?
+  createdBy   User?    @relation("AvailabilityCreator", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt   DateTime @default(now())
+
+  @@index([agentId, startsAt])
+  @@index([startsAt])
 }
 
 // ───────────────────────────── Website interest ─────────────────────────────

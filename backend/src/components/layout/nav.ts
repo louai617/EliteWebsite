@@ -74,7 +74,7 @@ export const NAV: NavGroup[] = [
         ],
       },
       { href: "/viewings", label: "Viewings", icon: CalendarClock },
-      { href: "/deals", label: "Deals", icon: Handshake },
+      { href: "/deals", label: "Pending contracts", icon: Handshake },
       { href: "/reservations", label: "Reservations", icon: Wallet },
       { href: "/owners", label: "Owners", icon: KeyRound },
     ],

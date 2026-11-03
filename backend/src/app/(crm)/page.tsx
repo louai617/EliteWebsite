@@ -82,14 +82,14 @@ export default async function DashboardPage() {
           value={formatMoney(stats.deals.pipelineValue)}
           icon={TrendingUp}
           accent
-          href="/deals?status=open"
+          href="/deals"
           hint={`${stats.deals.active} active deals · ${formatMoney(stats.deals.pipelineCommission)} expected commission`}
         />
         <StatCard
           label="Commission earned"
           value={formatMoney(stats.deals.wonCommission)}
           icon={Wallet}
-          href="/deals?status=CLOSED"
+          href="/deals?view=closed"
           hint={`${formatMoney(monthCommission)} this month · ${formatMoney(stats.deals.wonValue)} closed`}
         />
         <StatCard
@@ -104,7 +104,7 @@ export default async function DashboardPage() {
           value={formatPercent(stats.leads.conversionRate, 1)}
           icon={Percent}
           href="/leads?view=table&status=WON"
-          hint={`${stats.leads.won} won of ${stats.leads.total} leads · ${stats.leads.lost} lost`}
+          hint={`${stats.leads.won} booked (pending contract or client) of ${stats.leads.total} leads · ${stats.leads.lost} lost`}
         />
       </div>
 
@@ -143,8 +143,8 @@ export default async function DashboardPage() {
           <Metric label="Sold" value={stats.properties.sold} href="/properties?status=SOLD" />
           <Metric label="Total leads" value={stats.leads.total} href="/leads?view=table" />
           <Metric label="New leads" value={stats.leads.new} href="/leads?view=table&status=NEW" />
-          <Metric label="Active deals" value={stats.deals.active} href="/deals?status=open" />
-          <Metric label="Closed deals" value={stats.deals.closedWon} href="/deals?status=CLOSED" />
+          <Metric label="Pending contracts" value={stats.deals.active} href="/deals" />
+          <Metric label="Closed deals" value={stats.deals.closedWon} href="/deals?view=closed" />
         </div>
       </Card>
 
@@ -153,7 +153,7 @@ export default async function DashboardPage() {
           <CardHeader>
             <div>
               <CardTitle>Commission by month</CardTitle>
-              <CardDescription>Closed-won deals, last 6 months</CardDescription>
+              <CardDescription>Closed deals, last 6 months</CardDescription>
             </div>
             <span className="tabular text-sm font-semibold">{formatMoney(stats.deals.commissionPerMonth.reduce((s, m) => s + m.value, 0))}</span>
           </CardHeader>
@@ -167,7 +167,7 @@ export default async function DashboardPage() {
               }))}
               format="money"
               valueLabel="commission"
-              caption="Commission from closed-won deals per month (QAR)"
+              caption="Commission from closed deals per month (QAR)"
             />
           </CardContent>
         </Card>
@@ -324,7 +324,7 @@ export default async function DashboardPage() {
                   <TableHead className="text-right">Viewings done</TableHead>
                   <TableHead className="text-right">Open deals</TableHead>
                   <TableHead className="text-right">Pipeline</TableHead>
-                  <TableHead className="text-right">Won deals</TableHead>
+                  <TableHead className="text-right">Closed deals</TableHead>
                   <TableHead className="text-right">Commission</TableHead>
                 </TableRow>
               </TableHeader>

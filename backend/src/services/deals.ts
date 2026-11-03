@@ -153,7 +153,7 @@ async function closeInTx(tx: Tx, actor: Actor, deal: DealCore) {
       await tx.lead.update({ where: { id: deal.leadId }, data: { status: "WON", statusChangedAt: new Date(), lostReason: null } });
       await logActivity(tx, {
         action: "STATUS_CHANGED", entityType: "LEAD", entityId: deal.leadId, entityLabel: lead.fullName, userId: actor.id, leadId: deal.leadId, dealId: deal.id,
-        description: `Moved ${lead.fullName} to Won after ${deal.reference} closed`, meta: { from: lead.status, to: "WON" },
+        description: `Moved ${lead.fullName} to Won (now a client) after ${deal.reference} closed`, meta: { from: lead.status, to: "WON" },
       });
     }
   }
